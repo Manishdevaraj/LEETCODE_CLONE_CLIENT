@@ -1,6 +1,6 @@
 // @ts-nocheck
 //@ts-ignore
-const API_BASE = import.meta.env.VITE_API_URL ?? 'http://3.109.182.206:3000';
+const API_BASE = import.meta.env.VITE_API_URL ?? 'https://edutech.raidotaxi.in';
 
 // ─── Run result types ─────────────────────────────────────────────────────────
 
