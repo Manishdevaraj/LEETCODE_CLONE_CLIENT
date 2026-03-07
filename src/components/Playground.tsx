@@ -178,7 +178,7 @@ const languages = ["java", "python", "cpp"];
 
 const defaultTemplate: Record<string, string> = {
   python: "# Write your solution here\ndef solution():\n    pass",
-  java: "// Write your solution here\npublic class Solution {\n    public void solve() {\n        \n    }\n}",
+  java: "// Write your solution here\npublic class Main {\n    public void solve() {\n        \n    }\n}",
   cpp: "// Write your solution here\n#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    \n    return 0;\n}",
 };
 
