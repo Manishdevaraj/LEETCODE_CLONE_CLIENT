@@ -1,6 +1,6 @@
 // @ts-nocheck
 //@ts-ignore
-const API_BASE = import.meta.env.VITE_API_URL ?? 'https://edutech.raidotaxi.in';
+import { authFetch, API_BASE } from './api';
 
 // ─── Run result types ─────────────────────────────────────────────────────────
 
@@ -75,15 +75,13 @@ export async function fetchQuestion(id: string): Promise<Question> {
   return res.json() as Promise<Question>;
 }
 
-export async function fetchSubmissions(questionId: string, userId: string): Promise<SubmissionSummary[]> {
-  const res = await fetch(`${API_BASE}/submissions?questionId=${questionId}&userId=${userId}`);
+export async function fetchSubmissions(questionId: string): Promise<SubmissionSummary[]> {
+  const res = await authFetch(`${API_BASE}/submissions?questionId=${questionId}`);
   if (!res.ok) throw new Error('Failed to fetch submissions');
   return res.json() as Promise<SubmissionSummary[]>;
 }
 
 // ─── Execution ────────────────────────────────────────────────────────────────
-
-export const HARDCODED_USER_ID = '550e8400-e29b-41d4-a716-446655440000';
 
 /** POST /compilerun → get jobId, then SSE stream until type=complete.
  *  Returns a cleanup function to close the EventSource early if needed. */
@@ -96,10 +94,10 @@ export function compileRun(
 ): () => void {
   let es: EventSource | null = null;
 
-  fetch(`${API_BASE}/compilerun`, {
+  authFetch(`${API_BASE}/compilerun`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ questionId, userId: HARDCODED_USER_ID, language, code }),
+    body: JSON.stringify({ questionId, language, code }),
   })
     .then((r) => r.json())
     .then(({ jobId }: { jobId: string }) => {
@@ -160,10 +158,10 @@ export function submitCode(
 ): () => void {
   let es: EventSource | null = null;
 
-  fetch(`${API_BASE}/execute`, {
+  authFetch(`${API_BASE}/execute`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ questionId, userId: HARDCODED_USER_ID, language, code }),
+    body: JSON.stringify({ questionId, language, code }),
   })
     .then((r) => r.json())
     .then(({ submissionId, totalCount }: { submissionId: string; totalCount: number }) => {

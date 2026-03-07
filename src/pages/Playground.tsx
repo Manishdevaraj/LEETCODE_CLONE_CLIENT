@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import TestCaseRunner, { CodeEditor, DescriptionUi } from "@/components/Playground"
+import Navbar from '@/components/Navbar'
 import {
   ResizableHandle,
   ResizablePanel,
@@ -57,8 +58,9 @@ const Playground = () => {
   }, [questionId]);
 
   return (
-    <div className="w-full h-screen">
-      <ResizablePanelGroup orientation="horizontal">
+    <div className="w-full h-screen flex flex-col bg-zinc-950">
+      <Navbar />
+      <ResizablePanelGroup orientation="horizontal" className="flex-1">
         <ResizablePanel>
           <DescriptionUi question={question} submissionsRefreshKey={submissionsRefreshKey} />
         </ResizablePanel>
