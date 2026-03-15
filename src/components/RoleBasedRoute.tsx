@@ -1,14 +1,19 @@
-// @ts-nocheck
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
+import type { ReactNode } from 'react';
 
-export default function ProtectedRoute({ children }: { children: React.ReactNode }) {
+interface RoleBasedRouteProps {
+  pageAccess: string;
+  children: ReactNode;
+}
+
+export default function RoleBasedRoute({ pageAccess, children }: RoleBasedRouteProps) {
   const { user, isLoading } = useAuth();
 
   if (isLoading) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-zinc-950 gap-4">
-        <div className="w-10 h-10 rounded-xl bg-linear-to-br from-blue-500 to-violet-600 flex items-center justify-center text-white font-bold text-lg shadow-lg shadow-blue-500/25 animate-pulse">
+        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-violet-600 flex items-center justify-center text-white font-bold text-lg shadow-lg shadow-blue-500/25 animate-pulse">
           SW
         </div>
         <svg className="animate-spin h-5 w-5 text-zinc-500" viewBox="0 0 24 24">
@@ -20,6 +25,7 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
   }
 
   if (!user) return <Navigate to="/login" replace />;
+  if (!user.pageAccess.includes(pageAccess)) return <Navigate to="/" replace />;
 
   return children;
 }

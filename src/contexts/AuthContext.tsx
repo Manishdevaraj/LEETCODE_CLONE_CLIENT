@@ -1,11 +1,18 @@
-// @ts-nocheck
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
 import { API_BASE } from '@/lib/api';
 
-interface AuthUser {
+interface AuthRole {
+  id: string;
+  name: string;
+}
+
+export interface AuthUser {
   id: string;
   email: string;
-  role: string;
+  name: string | null;
+  role: AuthRole;
+  permissions: string[];
+  pageAccess: string[];
 }
 
 interface AuthContextType {
