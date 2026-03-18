@@ -6,9 +6,26 @@ import RoleBasedRoute from "./components/RoleBasedRoute";
 import QuestionsPage from "./pages/QuestionsPage";
 import Playground from "./pages/Playground";
 import LoginPage from "./pages/LoginPage";
-import SignupPage from "./pages/SignupPage";
 import RoleManagementPage from "./pages/admin/RoleManagementPage";
-import ComingSoon from "./pages/ComingSoon";
+import CollegeManagementPage from "./pages/admin/CollegeManagementPage";
+import BatchManagementPage from "./pages/admin/BatchManagementPage";
+import BulkUploadPage from "./pages/admin/BulkUploadPage";
+import McqBankPage from "./pages/admin/McqBankPage";
+import TestManagementPage from "./pages/admin/TestManagementPage";
+import AdminDashboardPage from "./pages/admin/AdminDashboardPage";
+import UserManagementPage from "./pages/admin/UserManagementPage";
+import StaffManagementPage from "./pages/admin/StaffManagementPage";
+import StudentManagementPage from "./pages/admin/StudentManagementPage";
+import QuestionBankPage from "./pages/admin/QuestionBankPage";
+import ReportsPage from "./pages/admin/ReportsPage";
+import CourseManagementPage from "./pages/admin/CourseManagementPage";
+import StudentCoursesPage from "./pages/student/StudentCoursesPage";
+import StudentCourseDetailPage from "./pages/student/StudentCourseDetailPage";
+import ProctorReviewPage from "./pages/admin/ProctorReviewPage";
+import StudentTestsPage from "./pages/student/StudentTestsPage";
+import TestLobbyPage from "./pages/student/TestLobbyPage";
+import TestExamPage from "./pages/student/TestExamPage";
+import TestResultPage from "./pages/student/TestResultPage";
 
 function HomeRedirect() {
   const { user, isLoading } = useAuth();
@@ -30,8 +47,6 @@ function App() {
       <Router>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
-          <Route path="/signup" element={<SignupPage />} />
-
           {/* Home redirect based on role */}
           <Route path="/" element={<ProtectedRoute><HomeRedirect /></ProtectedRoute>} />
 
@@ -41,7 +56,7 @@ function App() {
 
           {/* Dashboard */}
           <Route path="/dashboard" element={
-            <RoleBasedRoute pageAccess="dashboard"><ComingSoon title="Dashboard" /></RoleBasedRoute>
+            <RoleBasedRoute pageAccess="dashboard"><AdminDashboardPage /></RoleBasedRoute>
           } />
 
           {/* Admin routes */}
@@ -49,39 +64,60 @@ function App() {
             <RoleBasedRoute pageAccess="role_management"><RoleManagementPage /></RoleBasedRoute>
           } />
           <Route path="/admin/users" element={
-            <RoleBasedRoute pageAccess="user_management"><ComingSoon title="User Management" /></RoleBasedRoute>
+            <RoleBasedRoute pageAccess="user_management"><UserManagementPage /></RoleBasedRoute>
+          } />
+          <Route path="/admin/staff" element={
+            <RoleBasedRoute pageAccess="staff_management"><StaffManagementPage /></RoleBasedRoute>
+          } />
+          <Route path="/admin/students" element={
+            <RoleBasedRoute pageAccess="student_management"><StudentManagementPage /></RoleBasedRoute>
+          } />
+          <Route path="/admin/question-bank" element={
+            <RoleBasedRoute pageAccess="question_bank"><QuestionBankPage /></RoleBasedRoute>
           } />
           <Route path="/admin/colleges" element={
-            <RoleBasedRoute pageAccess="college_management"><ComingSoon title="College Management" /></RoleBasedRoute>
+            <RoleBasedRoute pageAccess="college_management"><CollegeManagementPage /></RoleBasedRoute>
           } />
           <Route path="/admin/batches" element={
-            <RoleBasedRoute pageAccess="batch_management"><ComingSoon title="Batch Management" /></RoleBasedRoute>
+            <RoleBasedRoute pageAccess="batch_management"><BatchManagementPage /></RoleBasedRoute>
           } />
           <Route path="/admin/bulk-upload" element={
-            <RoleBasedRoute pageAccess="bulk_upload"><ComingSoon title="Bulk Upload" /></RoleBasedRoute>
+            <RoleBasedRoute pageAccess="bulk_upload"><BulkUploadPage /></RoleBasedRoute>
           } />
           <Route path="/admin/tests" element={
-            <RoleBasedRoute pageAccess="test_management"><ComingSoon title="Test Management" /></RoleBasedRoute>
+            <RoleBasedRoute pageAccess="test_management"><TestManagementPage /></RoleBasedRoute>
           } />
           <Route path="/admin/mcq-bank" element={
-            <RoleBasedRoute pageAccess="mcq_bank"><ComingSoon title="MCQ Bank" /></RoleBasedRoute>
+            <RoleBasedRoute pageAccess="mcq_bank"><McqBankPage /></RoleBasedRoute>
           } />
           <Route path="/admin/courses" element={
-            <RoleBasedRoute pageAccess="course_management"><ComingSoon title="Course Management" /></RoleBasedRoute>
+            <RoleBasedRoute pageAccess="course_management"><CourseManagementPage /></RoleBasedRoute>
           } />
           <Route path="/admin/reports" element={
-            <RoleBasedRoute pageAccess="reports"><ComingSoon title="Reports" /></RoleBasedRoute>
+            <RoleBasedRoute pageAccess="reports"><ReportsPage /></RoleBasedRoute>
           } />
           <Route path="/admin/proctor" element={
-            <RoleBasedRoute pageAccess="proctor_review"><ComingSoon title="Proctoring" /></RoleBasedRoute>
+            <RoleBasedRoute pageAccess="proctor_review"><ProctorReviewPage /></RoleBasedRoute>
           } />
 
           {/* Student routes */}
           <Route path="/student/tests" element={
-            <RoleBasedRoute pageAccess="student_tests"><ComingSoon title="My Tests" /></RoleBasedRoute>
+            <RoleBasedRoute pageAccess="student_tests"><StudentTestsPage /></RoleBasedRoute>
+          } />
+          <Route path="/student/tests/join/:secureToken" element={
+            <ProtectedRoute><TestLobbyPage /></ProtectedRoute>
+          } />
+          <Route path="/student/tests/:testId/exam" element={
+            <ProtectedRoute><TestExamPage /></ProtectedRoute>
+          } />
+          <Route path="/student/tests/:testId/result" element={
+            <ProtectedRoute><TestResultPage /></ProtectedRoute>
           } />
           <Route path="/student/courses" element={
-            <RoleBasedRoute pageAccess="student_courses"><ComingSoon title="My Courses" /></RoleBasedRoute>
+            <RoleBasedRoute pageAccess="student_courses"><StudentCoursesPage /></RoleBasedRoute>
+          } />
+          <Route path="/student/courses/:courseId" element={
+            <ProtectedRoute><StudentCourseDetailPage /></ProtectedRoute>
           } />
         </Routes>
       </Router>

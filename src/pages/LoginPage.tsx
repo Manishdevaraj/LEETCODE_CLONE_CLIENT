@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 
 export default function LoginPage() {
@@ -95,14 +95,6 @@ export default function LoginPage() {
             </button>
           </form>
 
-          <div className="mt-6 pt-6 border-t border-zinc-800/80">
-            <p className="text-zinc-500 text-sm text-center">
-              Don't have an account?{' '}
-              <Link to="/signup" className="text-blue-400 hover:text-blue-300 font-medium transition-colors">
-                Create one
-              </Link>
-            </p>
-          </div>
         </div>
       </div>
     </div>

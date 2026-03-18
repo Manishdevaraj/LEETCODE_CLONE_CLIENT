@@ -1,0 +1,973 @@
+// @ts-nocheck
+import { useState, useEffect, useCallback } from 'react';
+import { API_BASE, authFetch } from '@/lib/api';
+import Navbar from '@/components/Navbar';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
+import { Textarea } from '@/components/ui/textarea';
+import { Separator } from '@/components/ui/separator';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+} from '@/components/ui/sheet';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from '@/components/ui/accordion';
+
+// ─── Types ──────────────────────────────────────────────────────────────────
+
+interface ContentItem {
+  id: string;
+  title: string;
+  type: 'VIDEO' | 'PDF';
+  url: string;
+  duration: number | null;
+}
+
+interface CourseDay {
+  id: string;
+  dayNumber: number;
+  title: string;
+  contents: ContentItem[];
+}
+
+interface CourseBatch {
+  id: string;
+  batchId: string;
+  batch?: { id: string; name: string };
+}
+
+interface Course {
+  id: string;
+  title: string;
+  description: string | null;
+  status: 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
+  totalDays: number;
+  createdAt: string;
+  days?: CourseDay[];
+  batches?: CourseBatch[];
+}
+
+interface Batch {
+  id: string;
+  name: string;
+}
+
+// ─── Component ──────────────────────────────────────────────────────────────
+
+export default function CourseManagementPage() {
+  // Data
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Sheet
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [editCourse, setEditCourse] = useState<Course | null>(null);
+  const [activeTab, setActiveTab] = useState('basic');
+
+  // Basic info
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [status, setStatus] = useState<string>('DRAFT');
+  const [saving, setSaving] = useState(false);
+
+  // Days & Content
+  const [days, setDays] = useState<CourseDay[]>([]);
+
+  // Day dialog
+  const [dayDialogOpen, setDayDialogOpen] = useState(false);
+  const [editDay, setEditDay] = useState<CourseDay | null>(null);
+  const [dayTitle, setDayTitle] = useState('');
+  const [dayNumber, setDayNumber] = useState(1);
+  const [daySaving, setDaySaving] = useState(false);
+
+  // Content dialog
+  const [contentDialogOpen, setContentDialogOpen] = useState(false);
+  const [contentDayId, setContentDayId] = useState<string | null>(null);
+  const [editContent, setEditContent] = useState<ContentItem | null>(null);
+  const [contentTitle, setContentTitle] = useState('');
+  const [contentType, setContentType] = useState<string>('VIDEO');
+  const [contentUrl, setContentUrl] = useState('');
+  const [contentDuration, setContentDuration] = useState('');
+  const [contentSaving, setContentSaving] = useState(false);
+
+  // Batches
+  const [courseBatches, setCourseBatches] = useState<CourseBatch[]>([]);
+  const [batchDialogOpen, setBatchDialogOpen] = useState(false);
+  const [allBatches, setAllBatches] = useState<Batch[]>([]);
+  const [selectedBatchIds, setSelectedBatchIds] = useState<Set<string>>(new Set());
+  const [batchLoading, setBatchLoading] = useState(false);
+
+  // Delete
+  const [deleteCourse, setDeleteCourse] = useState<Course | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+
+  // ─── Data fetching ──────────────────────────────────────────────────────
+
+  const fetchCourses = useCallback(async () => {
+    try {
+      const res = await authFetch(`${API_BASE}/courses`);
+      if (!res.ok) throw new Error('Failed to fetch courses');
+      const data = await res.json();
+      setCourses(Array.isArray(data) ? data : data.data ?? []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch courses');
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchCourses().finally(() => setLoading(false));
+  }, [fetchCourses]);
+
+  // ─── Course CRUD ──────────────────────────────────────────────────────
+
+  const openCreateSheet = () => {
+    setEditCourse(null);
+    setTitle('');
+    setDescription('');
+    setStatus('DRAFT');
+    setDays([]);
+    setCourseBatches([]);
+    setActiveTab('basic');
+    setSheetOpen(true);
+  };
+
+  const openEditSheet = async (course: Course) => {
+    setEditCourse(course);
+    setTitle(course.title);
+    setDescription(course.description ?? '');
+    setStatus(course.status);
+    setActiveTab('basic');
+    setSheetOpen(true);
+
+    try {
+      const res = await authFetch(`${API_BASE}/courses/${course.id}`);
+      if (res.ok) {
+        const data = await res.json();
+        setDays(data.days ?? []);
+        setCourseBatches(data.batches ?? []);
+      }
+    } catch { /* ignore */ }
+  };
+
+  const handleSaveBasicInfo = async () => {
+    if (!title.trim()) return;
+    setSaving(true);
+    try {
+      const payload = {
+        title: title.trim(),
+        description: description.trim() || null,
+        status,
+      };
+
+      const url = editCourse ? `${API_BASE}/courses/${editCourse.id}` : `${API_BASE}/courses`;
+      const method = editCourse ? 'PATCH' : 'POST';
+
+      const res = await authFetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || 'Failed to save course');
+      }
+
+      const saved = await res.json();
+      if (!editCourse) {
+        setEditCourse(saved);
+        setDays(saved.days ?? []);
+        setCourseBatches(saved.batches ?? []);
+      }
+      await fetchCourses();
+      setActiveTab('days');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save course');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeleteCourse = async () => {
+    if (!deleteCourse) return;
+    setDeleteLoading(true);
+    try {
+      const res = await authFetch(`${API_BASE}/courses/${deleteCourse.id}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Failed to delete course');
+      await fetchCourses();
+      setDeleteCourse(null);
+      if (editCourse?.id === deleteCourse.id) {
+        setSheetOpen(false);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete course');
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
+
+  // ─── Day CRUD ──────────────────────────────────────────────────────
+
+  const openAddDay = () => {
+    setEditDay(null);
+    setDayNumber(days.length + 1);
+    setDayTitle('');
+    setDayDialogOpen(true);
+  };
+
+  const openEditDay = (day: CourseDay) => {
+    setEditDay(day);
+    setDayNumber(day.dayNumber);
+    setDayTitle(day.title);
+    setDayDialogOpen(true);
+  };
+
+  const handleSaveDay = async () => {
+    if (!editCourse || !dayTitle.trim()) return;
+    setDaySaving(true);
+    try {
+      if (editDay) {
+        const res = await authFetch(`${API_BASE}/courses/days/${editDay.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ dayNumber, title: dayTitle.trim() }),
+        });
+        if (!res.ok) throw new Error('Failed to update day');
+      } else {
+        const res = await authFetch(`${API_BASE}/courses/${editCourse.id}/days`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ dayNumber, title: dayTitle.trim() }),
+        });
+        if (!res.ok) throw new Error('Failed to add day');
+      }
+
+      // Refresh course details
+      const res = await authFetch(`${API_BASE}/courses/${editCourse.id}`);
+      if (res.ok) {
+        const data = await res.json();
+        setDays(data.days ?? []);
+      }
+      await fetchCourses();
+      setDayDialogOpen(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save day');
+    } finally {
+      setDaySaving(false);
+    }
+  };
+
+  const handleDeleteDay = async (dayId: string) => {
+    if (!editCourse) return;
+    try {
+      const res = await authFetch(`${API_BASE}/courses/days/${dayId}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Failed to delete day');
+      const detailRes = await authFetch(`${API_BASE}/courses/${editCourse.id}`);
+      if (detailRes.ok) {
+        const data = await detailRes.json();
+        setDays(data.days ?? []);
+      }
+      await fetchCourses();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete day');
+    }
+  };
+
+  // ─── Content CRUD ──────────────────────────────────────────────────────
+
+  const openAddContent = (dayId: string) => {
+    setContentDayId(dayId);
+    setEditContent(null);
+    setContentTitle('');
+    setContentType('VIDEO');
+    setContentUrl('');
+    setContentDuration('');
+    setContentDialogOpen(true);
+  };
+
+  const openEditContent = (dayId: string, content: ContentItem) => {
+    setContentDayId(dayId);
+    setEditContent(content);
+    setContentTitle(content.title);
+    setContentType(content.type);
+    setContentUrl(content.url);
+    setContentDuration(content.duration ? String(content.duration) : '');
+    setContentDialogOpen(true);
+  };
+
+  const handleSaveContent = async () => {
+    if (!editCourse || !contentDayId || !contentTitle.trim() || !contentUrl.trim()) return;
+    setContentSaving(true);
+    try {
+      const payload = {
+        title: contentTitle.trim(),
+        type: contentType,
+        url: contentUrl.trim(),
+        duration: contentDuration ? Number(contentDuration) : null,
+      };
+
+      if (editContent) {
+        const res = await authFetch(`${API_BASE}/courses/content/${editContent.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) throw new Error('Failed to update content');
+      } else {
+        const res = await authFetch(`${API_BASE}/courses/days/${contentDayId}/content`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) throw new Error('Failed to add content');
+      }
+
+      const res = await authFetch(`${API_BASE}/courses/${editCourse.id}`);
+      if (res.ok) {
+        const data = await res.json();
+        setDays(data.days ?? []);
+      }
+      setContentDialogOpen(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save content');
+    } finally {
+      setContentSaving(false);
+    }
+  };
+
+  const handleDeleteContent = async (contentId: string) => {
+    if (!editCourse) return;
+    try {
+      const res = await authFetch(`${API_BASE}/courses/content/${contentId}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Failed to delete content');
+      const detailRes = await authFetch(`${API_BASE}/courses/${editCourse.id}`);
+      if (detailRes.ok) {
+        const data = await detailRes.json();
+        setDays(data.days ?? []);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete content');
+    }
+  };
+
+  // ─── Batch assignment ──────────────────────────────────────────────────
+
+  const openBatchDialog = async () => {
+    setBatchLoading(true);
+    setBatchDialogOpen(true);
+    setSelectedBatchIds(new Set());
+    try {
+      const res = await authFetch(`${API_BASE}/batches`);
+      if (res.ok) {
+        const data = await res.json();
+        setAllBatches(Array.isArray(data) ? data : data.data ?? []);
+      }
+    } catch { /* ignore */ }
+    setBatchLoading(false);
+  };
+
+  const handleAssignBatches = async () => {
+    if (!editCourse || selectedBatchIds.size === 0) return;
+    setBatchLoading(true);
+    try {
+      const res = await authFetch(`${API_BASE}/courses/${editCourse.id}/assign`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ batchIds: Array.from(selectedBatchIds) }),
+      });
+      if (!res.ok) throw new Error('Failed to assign batches');
+
+      const detailRes = await authFetch(`${API_BASE}/courses/${editCourse.id}`);
+      if (detailRes.ok) {
+        const data = await detailRes.json();
+        setCourseBatches(data.batches ?? []);
+      }
+      setBatchDialogOpen(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to assign batches');
+    } finally {
+      setBatchLoading(false);
+    }
+  };
+
+  const handleUnassignBatch = async (batchId: string) => {
+    if (!editCourse) return;
+    try {
+      const res = await authFetch(`${API_BASE}/courses/${editCourse.id}/assign/${batchId}`, {
+        method: 'DELETE',
+      });
+      if (!res.ok) throw new Error('Failed to unassign batch');
+
+      const detailRes = await authFetch(`${API_BASE}/courses/${editCourse.id}`);
+      if (detailRes.ok) {
+        const data = await detailRes.json();
+        setCourseBatches(data.batches ?? []);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to unassign batch');
+    }
+  };
+
+  // ─── Helpers ──────────────────────────────────────────────────────
+
+  const statusBadge = (s: string) => {
+    switch (s) {
+      case 'DRAFT':
+        return <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30">{s}</Badge>;
+      case 'PUBLISHED':
+        return <Badge className="bg-green-500/20 text-green-400 border-green-500/30">{s}</Badge>;
+      case 'ARCHIVED':
+        return <Badge className="bg-zinc-500/20 text-zinc-400 border-zinc-500/30">{s}</Badge>;
+      default:
+        return <Badge>{s}</Badge>;
+    }
+  };
+
+  const typeBadge = (t: string) => {
+    switch (t) {
+      case 'VIDEO':
+        return <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30">{t}</Badge>;
+      case 'PDF':
+        return <Badge className="bg-orange-500/20 text-orange-400 border-orange-500/30">{t}</Badge>;
+      default:
+        return <Badge>{t}</Badge>;
+    }
+  };
+
+  // ─── Render ──────────────────────────────────────────────────────
+
+  return (
+    <div className="min-h-screen bg-zinc-950 flex flex-col">
+      <Navbar />
+
+      <div className="flex-1 max-w-7xl mx-auto w-full px-6 py-8">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h1 className="text-2xl font-bold text-white">Course Management</h1>
+            <p className="text-sm text-zinc-400 mt-1">Create and manage courses, days, and content.</p>
+          </div>
+          <Button
+            onClick={openCreateSheet}
+            className="bg-gradient-to-r from-blue-500 to-violet-600 hover:from-blue-600 hover:to-violet-700 text-white cursor-pointer"
+          >
+            + Create Course
+          </Button>
+        </div>
+
+        {/* Error */}
+        {error && (
+          <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 mb-4 flex items-center justify-between">
+            <span className="text-red-400 text-sm">{error}</span>
+            <Button variant="ghost" size="sm" className="text-red-400 hover:text-red-300 cursor-pointer" onClick={() => setError(null)}>Dismiss</Button>
+          </div>
+        )}
+
+        {/* Loading */}
+        {loading ? (
+          <div className="text-center py-12 text-zinc-400">Loading courses...</div>
+        ) : courses.length === 0 ? (
+          <div className="text-center py-12">
+            <p className="text-zinc-400 mb-2">No courses found.</p>
+            <p className="text-zinc-500 text-sm">Create your first course to get started.</p>
+          </div>
+        ) : (
+          <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
+            <Table>
+              <TableHeader>
+                <TableRow className="border-zinc-800 hover:bg-transparent">
+                  <TableHead className="text-zinc-400">Title</TableHead>
+                  <TableHead className="text-zinc-400">Status</TableHead>
+                  <TableHead className="text-zinc-400">Days</TableHead>
+                  <TableHead className="text-zinc-400">Created</TableHead>
+                  <TableHead className="text-zinc-400 text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {courses.map((course) => (
+                  <TableRow key={course.id} className="border-zinc-800 hover:bg-zinc-800/50">
+                    <TableCell className="text-white font-medium">{course.title}</TableCell>
+                    <TableCell>{statusBadge(course.status)}</TableCell>
+                    <TableCell className="text-zinc-400">{course.totalDays ?? 0}</TableCell>
+                    <TableCell className="text-zinc-400">
+                      {course.createdAt ? new Date(course.createdAt).toLocaleDateString() : '—'}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex gap-2 justify-end">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-zinc-400 hover:text-white cursor-pointer"
+                          onClick={() => openEditSheet(course)}
+                        >
+                          Edit
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-red-400 hover:text-red-300 cursor-pointer"
+                          onClick={() => setDeleteCourse(course)}
+                        >
+                          Delete
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </div>
+
+      {/* ─── Editor Sheet ──────────────────────────────────────────────────── */}
+      <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
+        <SheetContent className="bg-zinc-900 border-zinc-800 w-full sm:max-w-2xl overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle className="text-white">
+              {editCourse ? 'Edit Course' : 'Create Course'}
+            </SheetTitle>
+            <SheetDescription className="text-zinc-400">
+              {editCourse ? 'Update course details, days, and batch assignments.' : 'Fill in the basic info to create a new course.'}
+            </SheetDescription>
+          </SheetHeader>
+
+          <Separator className="my-4 bg-zinc-800" />
+
+          <Tabs value={activeTab} onValueChange={setActiveTab}>
+            <TabsList className="bg-zinc-800 border-zinc-700 w-full">
+              <TabsTrigger value="basic" className="flex-1 data-[state=active]:bg-zinc-700 data-[state=active]:text-white cursor-pointer">
+                Basic Info
+              </TabsTrigger>
+              <TabsTrigger
+                value="days"
+                className="flex-1 data-[state=active]:bg-zinc-700 data-[state=active]:text-white cursor-pointer"
+                disabled={!editCourse}
+              >
+                Days & Content
+              </TabsTrigger>
+              <TabsTrigger
+                value="batches"
+                className="flex-1 data-[state=active]:bg-zinc-700 data-[state=active]:text-white cursor-pointer"
+                disabled={!editCourse}
+              >
+                Batches
+              </TabsTrigger>
+            </TabsList>
+
+            {/* ─── Basic Info Tab ──────────────────────────────────────────── */}
+            <TabsContent value="basic" className="mt-4 space-y-4">
+              <div>
+                <Label className="text-zinc-300 mb-1.5 block">Title</Label>
+                <Input
+                  placeholder="Course title"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  className="bg-zinc-800 border-zinc-700 text-white placeholder:text-zinc-500"
+                />
+              </div>
+              <div>
+                <Label className="text-zinc-300 mb-1.5 block">Description</Label>
+                <Textarea
+                  placeholder="Course description..."
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  className="bg-zinc-800 border-zinc-700 text-white placeholder:text-zinc-500 min-h-[100px]"
+                />
+              </div>
+              <div>
+                <Label className="text-zinc-300 mb-1.5 block">Status</Label>
+                <Select value={status} onValueChange={setStatus}>
+                  <SelectTrigger className="bg-zinc-800 border-zinc-700 text-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-zinc-800 border-zinc-700">
+                    <SelectItem value="DRAFT" className="text-white">Draft</SelectItem>
+                    <SelectItem value="PUBLISHED" className="text-white">Published</SelectItem>
+                    <SelectItem value="ARCHIVED" className="text-white">Archived</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button
+                onClick={handleSaveBasicInfo}
+                disabled={saving || !title.trim()}
+                className="w-full bg-gradient-to-r from-blue-500 to-violet-600 hover:from-blue-600 hover:to-violet-700 text-white cursor-pointer"
+              >
+                {saving ? 'Saving...' : editCourse ? 'Save & Continue' : 'Create & Continue'}
+              </Button>
+            </TabsContent>
+
+            {/* ─── Days & Content Tab ──────────────────────────────────────── */}
+            <TabsContent value="days" className="mt-4 space-y-4">
+              {days.length === 0 ? (
+                <div className="text-center py-8 text-zinc-500">
+                  No days added yet. Add your first day to begin building the course.
+                </div>
+              ) : (
+                <Accordion type="multiple" className="space-y-2">
+                  {days
+                    .sort((a, b) => a.dayNumber - b.dayNumber)
+                    .map((day) => (
+                      <AccordionItem
+                        key={day.id}
+                        value={day.id}
+                        className="bg-zinc-800/50 border border-zinc-700 rounded-lg px-4"
+                      >
+                        <AccordionTrigger className="hover:no-underline">
+                          <div className="flex items-center justify-between w-full pr-2">
+                            <span className="text-white font-medium">
+                              Day {day.dayNumber}: {day.title}
+                            </span>
+                            <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-zinc-400 hover:text-white h-7 px-2 cursor-pointer"
+                                onClick={() => openEditDay(day)}
+                              >
+                                Edit
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-red-400 hover:text-red-300 h-7 px-2 cursor-pointer"
+                                onClick={() => handleDeleteDay(day.id)}
+                              >
+                                Delete
+                              </Button>
+                            </div>
+                          </div>
+                        </AccordionTrigger>
+                        <AccordionContent className="pt-2 pb-4">
+                          {day.contents && day.contents.length > 0 ? (
+                            <div className="space-y-2">
+                              {day.contents.map((content) => (
+                                <div
+                                  key={content.id}
+                                  className="flex items-center justify-between bg-zinc-900 rounded-lg p-3 border border-zinc-700"
+                                >
+                                  <div className="flex items-center gap-3 min-w-0">
+                                    {typeBadge(content.type)}
+                                    <span className="text-white text-sm truncate">{content.title}</span>
+                                    {content.duration && (
+                                      <span className="text-zinc-500 text-xs">{content.duration} min</span>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center gap-2 shrink-0">
+                                    <a
+                                      href={content.url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-blue-400 hover:text-blue-300 text-xs"
+                                    >
+                                      URL
+                                    </a>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="text-zinc-400 hover:text-white h-7 px-2 cursor-pointer"
+                                      onClick={() => openEditContent(day.id, content)}
+                                    >
+                                      Edit
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="text-red-400 hover:text-red-300 h-7 px-2 cursor-pointer"
+                                      onClick={() => handleDeleteContent(content.id)}
+                                    >
+                                      Delete
+                                    </Button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-zinc-500 text-sm mb-2">No content added yet.</p>
+                          )}
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="mt-3 border-zinc-700 text-zinc-300 hover:text-white hover:bg-zinc-700 cursor-pointer"
+                            onClick={() => openAddContent(day.id)}
+                          >
+                            + Add Content
+                          </Button>
+                        </AccordionContent>
+                      </AccordionItem>
+                    ))}
+                </Accordion>
+              )}
+
+              <Button
+                variant="outline"
+                className="w-full border-zinc-700 text-zinc-300 hover:text-white hover:bg-zinc-700 cursor-pointer"
+                onClick={openAddDay}
+              >
+                + Add Day
+              </Button>
+            </TabsContent>
+
+            {/* ─── Batches Tab ──────────────────────────────────────────── */}
+            <TabsContent value="batches" className="mt-4 space-y-4">
+              {courseBatches.length === 0 ? (
+                <div className="text-center py-8 text-zinc-500">
+                  No batches assigned. Assign batches to make this course available to students.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {courseBatches.map((cb) => (
+                    <div
+                      key={cb.id}
+                      className="flex items-center justify-between bg-zinc-800/50 rounded-lg p-3 border border-zinc-700"
+                    >
+                      <span className="text-white text-sm">{cb.batch?.name ?? cb.batchId}</span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-red-400 hover:text-red-300 h-7 cursor-pointer"
+                        onClick={() => handleUnassignBatch(cb.batchId)}
+                      >
+                        Unassign
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <Button
+                variant="outline"
+                className="w-full border-zinc-700 text-zinc-300 hover:text-white hover:bg-zinc-700 cursor-pointer"
+                onClick={openBatchDialog}
+              >
+                + Assign Batch
+              </Button>
+            </TabsContent>
+          </Tabs>
+        </SheetContent>
+      </Sheet>
+
+      {/* ─── Delete Confirmation Dialog ────────────────────────────────────── */}
+      <Dialog open={!!deleteCourse} onOpenChange={(open) => !open && setDeleteCourse(null)}>
+        <DialogContent className="bg-zinc-900 border-zinc-800">
+          <DialogHeader>
+            <DialogTitle className="text-white">Delete Course</DialogTitle>
+            <DialogDescription className="text-zinc-400">
+              Are you sure you want to delete <strong className="text-white">{deleteCourse?.title}</strong>? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="ghost" className="text-zinc-400 hover:text-white cursor-pointer" onClick={() => setDeleteCourse(null)}>
+              Cancel
+            </Button>
+            <Button
+              className="bg-red-600 hover:bg-red-700 text-white cursor-pointer"
+              disabled={deleteLoading}
+              onClick={handleDeleteCourse}
+            >
+              {deleteLoading ? 'Deleting...' : 'Delete'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── Day Dialog ──────────────────────────────────────────────────── */}
+      <Dialog open={dayDialogOpen} onOpenChange={setDayDialogOpen}>
+        <DialogContent className="bg-zinc-900 border-zinc-800">
+          <DialogHeader>
+            <DialogTitle className="text-white">{editDay ? 'Edit Day' : 'Add Day'}</DialogTitle>
+            <DialogDescription className="text-zinc-400">
+              {editDay ? 'Update day details.' : 'Add a new day to the course.'}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label className="text-zinc-300 mb-1.5 block">Day Number</Label>
+              <Input
+                type="number"
+                min={1}
+                value={dayNumber}
+                onChange={(e) => setDayNumber(Number(e.target.value))}
+                className="bg-zinc-800 border-zinc-700 text-white"
+              />
+            </div>
+            <div>
+              <Label className="text-zinc-300 mb-1.5 block">Title</Label>
+              <Input
+                placeholder="Day title"
+                value={dayTitle}
+                onChange={(e) => setDayTitle(e.target.value)}
+                className="bg-zinc-800 border-zinc-700 text-white placeholder:text-zinc-500"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" className="text-zinc-400 hover:text-white cursor-pointer" onClick={() => setDayDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              className="bg-gradient-to-r from-blue-500 to-violet-600 hover:from-blue-600 hover:to-violet-700 text-white cursor-pointer"
+              disabled={daySaving || !dayTitle.trim()}
+              onClick={handleSaveDay}
+            >
+              {daySaving ? 'Saving...' : editDay ? 'Update Day' : 'Add Day'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── Content Dialog ──────────────────────────────────────────────── */}
+      <Dialog open={contentDialogOpen} onOpenChange={setContentDialogOpen}>
+        <DialogContent className="bg-zinc-900 border-zinc-800">
+          <DialogHeader>
+            <DialogTitle className="text-white">{editContent ? 'Edit Content' : 'Add Content'}</DialogTitle>
+            <DialogDescription className="text-zinc-400">
+              {editContent ? 'Update content details.' : 'Add new content to this day.'}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label className="text-zinc-300 mb-1.5 block">Title</Label>
+              <Input
+                placeholder="Content title"
+                value={contentTitle}
+                onChange={(e) => setContentTitle(e.target.value)}
+                className="bg-zinc-800 border-zinc-700 text-white placeholder:text-zinc-500"
+              />
+            </div>
+            <div>
+              <Label className="text-zinc-300 mb-1.5 block">Type</Label>
+              <Select value={contentType} onValueChange={setContentType}>
+                <SelectTrigger className="bg-zinc-800 border-zinc-700 text-white">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-zinc-800 border-zinc-700">
+                  <SelectItem value="VIDEO" className="text-white">Video</SelectItem>
+                  <SelectItem value="PDF" className="text-white">PDF</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-zinc-300 mb-1.5 block">URL</Label>
+              <Input
+                placeholder="https://..."
+                value={contentUrl}
+                onChange={(e) => setContentUrl(e.target.value)}
+                className="bg-zinc-800 border-zinc-700 text-white placeholder:text-zinc-500"
+              />
+            </div>
+            <div>
+              <Label className="text-zinc-300 mb-1.5 block">Duration (minutes)</Label>
+              <Input
+                type="number"
+                min={0}
+                placeholder="Optional"
+                value={contentDuration}
+                onChange={(e) => setContentDuration(e.target.value)}
+                className="bg-zinc-800 border-zinc-700 text-white placeholder:text-zinc-500"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" className="text-zinc-400 hover:text-white cursor-pointer" onClick={() => setContentDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              className="bg-gradient-to-r from-blue-500 to-violet-600 hover:from-blue-600 hover:to-violet-700 text-white cursor-pointer"
+              disabled={contentSaving || !contentTitle.trim() || !contentUrl.trim()}
+              onClick={handleSaveContent}
+            >
+              {contentSaving ? 'Saving...' : editContent ? 'Update Content' : 'Add Content'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── Batch Assignment Dialog ──────────────────────────────────────── */}
+      <Dialog open={batchDialogOpen} onOpenChange={setBatchDialogOpen}>
+        <DialogContent className="bg-zinc-900 border-zinc-800 max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-white">Assign Batches</DialogTitle>
+            <DialogDescription className="text-zinc-400">
+              Select batches to assign to this course.
+            </DialogDescription>
+          </DialogHeader>
+          {batchLoading ? (
+            <div className="text-center py-6 text-zinc-400">Loading batches...</div>
+          ) : allBatches.length === 0 ? (
+            <div className="text-center py-6 text-zinc-500">No batches available.</div>
+          ) : (
+            <div className="space-y-2 max-h-[300px] overflow-y-auto">
+              {allBatches
+                .filter((b) => !courseBatches.some((cb) => cb.batchId === b.id))
+                .map((batch) => (
+                  <label
+                    key={batch.id}
+                    className="flex items-center gap-3 p-3 rounded-lg bg-zinc-800/50 border border-zinc-700 cursor-pointer hover:bg-zinc-800"
+                  >
+                    <Checkbox
+                      checked={selectedBatchIds.has(batch.id)}
+                      onCheckedChange={(checked) => {
+                        const next = new Set(selectedBatchIds);
+                        if (checked) next.add(batch.id);
+                        else next.delete(batch.id);
+                        setSelectedBatchIds(next);
+                      }}
+                    />
+                    <span className="text-white text-sm">{batch.name}</span>
+                  </label>
+                ))}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="ghost" className="text-zinc-400 hover:text-white cursor-pointer" onClick={() => setBatchDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              className="bg-gradient-to-r from-blue-500 to-violet-600 hover:from-blue-600 hover:to-violet-700 text-white cursor-pointer"
+              disabled={batchLoading || selectedBatchIds.size === 0}
+              onClick={handleAssignBatches}
+            >
+              {batchLoading ? 'Assigning...' : 'Assign Selected'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
