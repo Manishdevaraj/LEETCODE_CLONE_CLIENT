@@ -1,9 +1,9 @@
 // @ts-nocheck
 import { Navigate } from 'react-router-dom';
-import { useAuth } from '@/contexts/AuthContext';
+import { useAuthStore } from '@/stores/authStore';
 
 export default function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { user, isLoading } = useAuth();
+  const { user, isLoading } = useAuthStore();
 
   if (isLoading) {
     return (

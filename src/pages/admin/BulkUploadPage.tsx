@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback } from 'react';
-import { API_BASE, authFetch } from '@/lib/api';
+import { bulkUploadService } from '@/services/bulk-upload.service';
 import Navbar from '@/components/Navbar';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -26,11 +26,16 @@ interface UploadResultRow {
   reason?: string;
 }
 
+interface UploadError {
+  row: number;
+  message: string;
+}
+
 interface UploadResult {
   total: number;
   created: number;
   skipped: number;
-  errors: number;
+  errors: UploadError[];
   details: UploadResultRow[];
 }
 
@@ -51,9 +56,7 @@ export default function BulkUploadPage() {
   const handleDownloadTemplate = async () => {
     setDownloading(true);
     try {
-      const res = await authFetch(`${API_BASE}/bulk-upload/template`);
-      if (!res.ok) throw new Error('Failed to download template');
-      const blob = await res.blob();
+      const blob = await bulkUploadService.downloadStudentTemplate();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -107,26 +110,10 @@ export default function BulkUploadPage() {
     setUploadProgress(10);
     setError(null);
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-
       setUploadProgress(30);
-
-      const res = await authFetch(`${API_BASE}/bulk-upload/students`, {
-        method: 'POST',
-        body: formData,
-        // Do NOT set Content-Type — let browser set multipart boundary
-      });
-
+      const data = await bulkUploadService.uploadStudents(file);
       setUploadProgress(80);
-
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || 'Upload failed');
-      }
-
-      const data: UploadResult = await res.json();
-      setResult(data);
+      setResult(data as unknown as UploadResult);
       setUploadProgress(100);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Upload failed');
@@ -313,7 +300,7 @@ export default function BulkUploadPage() {
               <Card className="bg-zinc-900 border-zinc-800">
                 <CardContent className="pt-6">
                   <p className="text-xs text-red-500 uppercase tracking-wider">Errors</p>
-                  <p className="text-2xl font-bold text-red-400 mt-1">{result.errors}</p>
+                  <p className="text-2xl font-bold text-red-400 mt-1">{result.errors.length}</p>
                 </CardContent>
               </Card>
             </div>

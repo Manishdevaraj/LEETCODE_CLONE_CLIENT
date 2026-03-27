@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
-import { API_BASE, authFetch } from '@/lib/api';
+import { useState, useEffect } from 'react';
+import { useMcqStore } from '@/stores/mcqStore';
+import { mcqService } from '@/services/mcq.service';
 import Navbar from '@/components/Navbar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -61,12 +62,26 @@ interface McqQuestion {
 // ─── Component ──────────────────────────────────────────────────────────────
 
 export default function McqBankPage() {
-  // Data
-  const [questions, setQuestions] = useState<McqQuestion[]>([]);
-  const [categories, setCategories] = useState<McqCategory[]>([]);
+  // Store
+  const {
+    questions: storeQuestions,
+    categories: storeCategories,
+    isLoading: storeLoading,
+    error: storeError,
+    fetchCategories: storeFetchCategories,
+    fetchQuestions: storeFetchQuestions,
+    clearError,
+  } = useMcqStore();
+
+  const questions = storeQuestions as unknown as McqQuestion[];
+  const categories = storeCategories as unknown as McqCategory[];
+
+  // Local data state
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const displayError = error || storeError;
 
   // Filters
   const [filterCategory, setFilterCategory] = useState<string>('all');
@@ -104,44 +119,29 @@ export default function McqBankPage() {
 
   // ─── Data fetching ──────────────────────────────────────────────────────
 
-  const fetchCategories = useCallback(async () => {
+  const buildParams = () => {
+    const params: Record<string, string> = { page: String(page), limit: String(limit) };
+    if (filterCategory && filterCategory !== 'all') params.categoryId = filterCategory;
+    if (filterDifficulty && filterDifficulty !== 'all') params.difficulty = filterDifficulty;
+    if (filterTopic.trim()) params.topic = filterTopic.trim();
+    return params;
+  };
+
+  const fetchQuestions = async () => {
+    const params = buildParams();
+    await storeFetchQuestions(params);
     try {
-      const res = await authFetch(`${API_BASE}/mcq-categories`);
-      if (!res.ok) throw new Error('Failed to fetch categories');
-      const data = await res.json();
-      setCategories(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch categories');
+      const count = await mcqService.getQuestionCount(params);
+      setTotalCount(count);
+    } catch {
+      // count fetch failure is non-critical
     }
-  }, []);
-
-  const fetchQuestions = useCallback(async () => {
-    try {
-      const params = new URLSearchParams({ page: String(page), limit: String(limit) });
-      if (filterCategory && filterCategory !== 'all') params.set('categoryId', filterCategory);
-      if (filterDifficulty && filterDifficulty !== 'all') params.set('difficulty', filterDifficulty);
-      if (filterTopic.trim()) params.set('topic', filterTopic.trim());
-
-      const [qRes, cRes] = await Promise.all([
-        authFetch(`${API_BASE}/mcq-questions?${params}`),
-        authFetch(`${API_BASE}/mcq-questions/count?${params}`),
-      ]);
-      if (!qRes.ok) throw new Error('Failed to fetch questions');
-      const qData = await qRes.json();
-      setQuestions(Array.isArray(qData) ? qData : qData.data ?? []);
-
-      if (cRes.ok) {
-        const cData = await cRes.json();
-        setTotalCount(typeof cData === 'number' ? cData : cData.count ?? 0);
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch questions');
-    }
-  }, [page, filterCategory, filterDifficulty, filterTopic]);
+  };
 
   useEffect(() => {
-    Promise.all([fetchCategories(), fetchQuestions()]).finally(() => setLoading(false));
-  }, [fetchCategories, fetchQuestions]);
+    Promise.all([storeFetchCategories(), fetchQuestions()]).finally(() => setLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, filterCategory, filterDifficulty]);
 
   // ─── Category CRUD ────────────────────────────────────────────────────
 
@@ -149,18 +149,10 @@ export default function McqBankPage() {
     if (!catName.trim()) return;
     setCatSaving(true);
     try {
-      const res = await authFetch(`${API_BASE}/mcq-categories`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: catName.trim(), description: catDesc.trim() || null }),
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || 'Failed to create category');
-      }
+      await mcqService.createCategory({ name: catName.trim(), description: catDesc.trim() || null });
       setCatName('');
       setCatDesc('');
-      await fetchCategories();
+      await storeFetchCategories();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create category');
     } finally {
@@ -172,17 +164,9 @@ export default function McqBankPage() {
     if (!editCat || !editCatName.trim()) return;
     setCatSaving(true);
     try {
-      const res = await authFetch(`${API_BASE}/mcq-categories/${editCat.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: editCatName.trim(), description: editCatDesc.trim() || null }),
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || 'Failed to update category');
-      }
+      await mcqService.updateCategory(editCat.id, { name: editCatName.trim(), description: editCatDesc.trim() || null });
       setEditCat(null);
-      await fetchCategories();
+      await storeFetchCategories();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update category');
     } finally {
@@ -193,12 +177,8 @@ export default function McqBankPage() {
   const handleDeleteCategory = async (cat: McqCategory) => {
     if (!confirm(`Delete category "${cat.name}"? This cannot be undone.`)) return;
     try {
-      const res = await authFetch(`${API_BASE}/mcq-categories/${cat.id}`, { method: 'DELETE' });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || 'Failed to delete category');
-      }
-      await fetchCategories();
+      await mcqService.deleteCategory(cat.id);
+      await storeFetchCategories();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete category');
     }
@@ -283,20 +263,10 @@ export default function McqBankPage() {
           .map((o) => ({ label: o.label, text: o.text.trim(), isCorrect: o.isCorrect })),
       };
 
-      const url = editQuestion
-        ? `${API_BASE}/mcq-questions/${editQuestion.id}`
-        : `${API_BASE}/mcq-questions`;
-      const method = editQuestion ? 'PATCH' : 'POST';
-
-      const res = await authFetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || 'Failed to save question');
+      if (editQuestion) {
+        await mcqService.updateQuestion(editQuestion.id, payload);
+      } else {
+        await mcqService.createQuestion(payload);
       }
 
       setQDialogOpen(false);
@@ -312,11 +282,7 @@ export default function McqBankPage() {
     if (!deleteQuestion) return;
     setDeleteLoading(true);
     try {
-      const res = await authFetch(`${API_BASE}/mcq-questions/${deleteQuestion.id}`, { method: 'DELETE' });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || 'Failed to delete question');
-      }
+      await mcqService.deleteQuestion(deleteQuestion.id);
       setDeleteQuestion(null);
       await fetchQuestions();
     } catch (err) {
@@ -352,7 +318,7 @@ export default function McqBankPage() {
 
   // ─── Render ───────────────────────────────────────────────────────────
 
-  if (loading) {
+  if (loading || storeLoading) {
     return (
       <div className="min-h-screen bg-zinc-950">
         <Navbar />
@@ -397,10 +363,10 @@ export default function McqBankPage() {
         </div>
 
         {/* Error banner */}
-        {error && (
+        {displayError && (
           <div className="mb-6 p-4 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm flex items-center justify-between">
-            <span>{error}</span>
-            <button onClick={() => setError(null)} className="text-red-400 hover:text-red-300 ml-4">
+            <span>{displayError}</span>
+            <button onClick={() => { setError(null); clearError(); }} className="text-red-400 hover:text-red-300 ml-4">
               Dismiss
             </button>
           </div>

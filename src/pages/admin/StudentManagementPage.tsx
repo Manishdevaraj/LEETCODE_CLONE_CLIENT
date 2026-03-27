@@ -1,7 +1,8 @@
-// @ts-nocheck
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { API_BASE, authFetch } from '@/lib/api';
+import { userService } from '@/services/user.service';
+import { collegeService } from '@/services/college.service';
+import { batchService } from '@/services/batch.service';
 import Navbar from '@/components/Navbar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -146,8 +147,7 @@ export default function StudentManagementPage() {
   useEffect(() => {
     const fetchMeta = async () => {
       try {
-        const res = await authFetch(`${API_BASE}/colleges`);
-        if (res.ok) setColleges(await res.json());
+        setColleges(await collegeService.getAll() as unknown as College[]);
       } catch {
         // Non-critical; filter will just be empty
       }
@@ -157,34 +157,31 @@ export default function StudentManagementPage() {
 
   // ─── Fetch students when filters/page change ─────────────────────────
 
-  const fetchStudents = useCallback(async () => {
+  const fetchStudents = async () => {
     setLoading(true);
     setError(null);
     try {
-      const params = new URLSearchParams({
-        page: String(page),
-        limit: String(limit),
+      const data = await userService.getAll({
+        page,
+        limit,
+        search: debouncedSearch || undefined,
+        collegeId: collegeFilter || undefined,
+        batchId: batchFilter || undefined,
         userType: 'student',
       });
-      if (debouncedSearch) params.set('search', debouncedSearch);
-      if (collegeFilter) params.set('collegeId', collegeFilter);
-      if (batchFilter) params.set('batch', batchFilter);
-
-      const res = await authFetch(`${API_BASE}/admin/users?${params}`);
-      if (!res.ok) throw new Error('Failed to fetch students');
-      const data: StudentsResponse = await res.json();
-      setStudents(data.data);
-      setTotal(data.total);
+      setStudents((data.data ?? []) as unknown as Student[]);
+      setTotal(data.total ?? 0);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch students');
     } finally {
       setLoading(false);
     }
-  }, [page, debouncedSearch, collegeFilter, batchFilter]);
+  };
 
   useEffect(() => {
     fetchStudents();
-  }, [fetchStudents]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, debouncedSearch, collegeFilter, batchFilter]);
 
   // ─── Clear filters ─────────────────────────────────────────────────────
 
@@ -204,13 +201,7 @@ export default function StudentManagementPage() {
     if (!deleteStudent) return;
     setDeleting(true);
     try {
-      const res = await authFetch(`${API_BASE}/admin/users/${deleteStudent.id}`, {
-        method: 'DELETE',
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || 'Failed to delete student');
-      }
+      await userService.delete(deleteStudent.id);
       setDeleteStudent(null);
       await fetchStudents();
     } catch (err) {
@@ -237,8 +228,7 @@ export default function StudentManagementPage() {
 
   const fetchDepartments = async (collegeId: string) => {
     try {
-      const res = await authFetch(`${API_BASE}/colleges/${collegeId}/departments`);
-      if (res.ok) setAssignDepartments(await res.json());
+      setAssignDepartments(await collegeService.getDepartments(collegeId) as unknown as Department[]);
     } catch {
       setAssignDepartments([]);
     }
@@ -246,8 +236,7 @@ export default function StudentManagementPage() {
 
   const fetchBatches = async (departmentId: string) => {
     try {
-      const res = await authFetch(`${API_BASE}/departments/${departmentId}/batches`);
-      if (res.ok) setAssignBatches(await res.json());
+      setAssignBatches(await batchService.getByDepartment(departmentId) as unknown as { id: string; name: string; year: number }[]);
     } catch {
       setAssignBatches([]);
     }
@@ -273,15 +262,7 @@ export default function StudentManagementPage() {
     if (!assignStudent || !assignBatchId) return;
     setAssigning(true);
     try {
-      const res = await authFetch(`${API_BASE}/batches/${assignBatchId}/students`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userIds: [assignStudent.id] }),
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || 'Failed to assign batch');
-      }
+      await batchService.addStudents(assignBatchId, { userIds: [assignStudent.id] } as Parameters<typeof batchService.addStudents>[1]);
       setAssignStudent(null);
       await fetchStudents();
     } catch (err) {
@@ -295,13 +276,7 @@ export default function StudentManagementPage() {
 
   const handleRemoveBatch = async (studentId: string, batchId: string) => {
     try {
-      const res = await authFetch(`${API_BASE}/batches/${batchId}/students/${studentId}`, {
-        method: 'DELETE',
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || 'Failed to remove from batch');
-      }
+      await batchService.removeStudent(batchId, studentId);
       await fetchStudents();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to remove from batch');

@@ -1,7 +1,7 @@
-// @ts-nocheck
-import { useState, useEffect, useCallback } from 'react';
-import { API_BASE, authFetch } from '@/lib/api';
-import { useAuth } from '@/contexts/AuthContext';
+import { useState, useEffect } from 'react';
+import { useQuestionStore } from '@/stores/questionStore';
+import { useAuthStore } from '@/stores/authStore';
+import { questionService } from '@/services/question.service';
 import Navbar from '@/components/Navbar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -78,12 +78,13 @@ const EMPTY_TEST_CASE: () => TestCase = () => ({
 // ─── Component ──────────────────────────────────────────────────────────────
 
 export default function QuestionBankPage() {
-  const { user } = useAuth();
+  const { user } = useAuthStore();
+  const { questions: storeQuestions, isLoading: loading, error: storeError, fetchQuestions, clearError } = useQuestionStore();
+  const questions = storeQuestions as unknown as Question[];
 
-  // Data
-  const [questions, setQuestions] = useState<Question[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Local error state for dialog-level errors
   const [error, setError] = useState<string | null>(null);
+  const displayError = error || storeError;
 
   // Filters
   const [searchTitle, setSearchTitle] = useState('');
@@ -112,19 +113,8 @@ export default function QuestionBankPage() {
 
   // ─── Data fetching ──────────────────────────────────────────────────────
 
-  const fetchQuestions = useCallback(async () => {
-    try {
-      const res = await authFetch(`${API_BASE}/questions`);
-      if (!res.ok) throw new Error('Failed to fetch questions');
-      const data = await res.json();
-      setQuestions(Array.isArray(data) ? data : data.data ?? []);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch questions');
-    }
-  }, []);
-
   useEffect(() => {
-    fetchQuestions().finally(() => setLoading(false));
+    fetchQuestions();
   }, [fetchQuestions]);
 
   // ─── Filtered list ────────────────────────────────────────────────────
@@ -162,9 +152,7 @@ export default function QuestionBankPage() {
     setEditQuestion(q);
     setError(null);
     try {
-      const res = await authFetch(`${API_BASE}/questions/${q.id}/admin`);
-      if (!res.ok) throw new Error('Failed to fetch question details');
-      const data: Question = await res.json();
+      const data = await questionService.getByIdAdmin(q.id) as unknown as Question;
 
       setTitle(data.title);
       setDescription(data.description ?? '');
@@ -228,7 +216,7 @@ export default function QuestionBankPage() {
         difficulty,
         timeLimit,
         memoryLimit,
-        ...(editQuestion ? {} : { createdById: user.id }),
+        ...(editQuestion ? {} : { createdById: user?.id }),
         testCases: testCases
           .filter((tc) => tc.input.trim() || tc.expectedOutput.trim())
           .map((tc, i) => ({
@@ -239,20 +227,10 @@ export default function QuestionBankPage() {
           })),
       };
 
-      const url = editQuestion
-        ? `${API_BASE}/questions/${editQuestion.id}`
-        : `${API_BASE}/questions`;
-      const method = editQuestion ? 'PATCH' : 'POST';
-
-      const res = await authFetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || 'Failed to save question');
+      if (editQuestion) {
+        await questionService.update(editQuestion.id, payload);
+      } else {
+        await questionService.create(payload);
       }
 
       setDialogOpen(false);
@@ -270,13 +248,7 @@ export default function QuestionBankPage() {
     if (!deleteTarget) return;
     setDeleteLoading(true);
     try {
-      const res = await authFetch(`${API_BASE}/questions/${deleteTarget.id}`, {
-        method: 'DELETE',
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || 'Failed to delete question');
-      }
+      await questionService.delete(deleteTarget.id);
       setDeleteTarget(null);
       await fetchQuestions();
     } catch (err) {
@@ -361,11 +333,11 @@ export default function QuestionBankPage() {
         </div>
 
         {/* Error banner */}
-        {error && (
+        {displayError && (
           <div className="mb-6 p-4 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm flex items-center justify-between">
-            <span>{error}</span>
+            <span>{displayError}</span>
             <button
-              onClick={() => setError(null)}
+              onClick={() => { setError(null); clearError(); }}
               className="text-red-400 hover:text-red-300 ml-4"
             >
               Dismiss

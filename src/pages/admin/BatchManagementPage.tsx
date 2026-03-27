@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
-import { API_BASE, authFetch } from '@/lib/api';
+import { useState, useEffect } from 'react';
+import { collegeService } from '@/services/college.service';
+import { batchService } from '@/services/batch.service';
 import Navbar from '@/components/Navbar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -110,56 +111,48 @@ export default function BatchManagementPage() {
 
   // ─── Data fetching ──────────────────────────────────────────────────────
 
-  const fetchColleges = useCallback(async () => {
+  const fetchColleges = async () => {
     try {
-      const res = await authFetch(`${API_BASE}/colleges`);
-      if (!res.ok) throw new Error('Failed to fetch colleges');
-      setColleges(await res.json());
+      setColleges(await collegeService.getAll());
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch colleges');
     }
-  }, []);
+  };
 
-  const fetchDepartments = useCallback(async (collegeId: string) => {
+  const fetchDepartments = async (collegeId: string) => {
     try {
-      const res = await authFetch(`${API_BASE}/colleges/${collegeId}/departments`);
-      if (!res.ok) throw new Error('Failed to fetch departments');
-      setDepartments(await res.json());
+      setDepartments(await collegeService.getDepartments(collegeId));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch departments');
     }
-  }, []);
+  };
 
-  const fetchBatches = useCallback(async (deptId: string) => {
+  const fetchBatches = async (deptId: string) => {
     setBatchLoading(true);
     try {
-      const res = await authFetch(`${API_BASE}/departments/${deptId}/batches`);
-      if (!res.ok) throw new Error('Failed to fetch batches');
-      setBatches(await res.json());
+      setBatches(await batchService.getByDepartment(deptId));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch batches');
     } finally {
       setBatchLoading(false);
     }
-  }, []);
+  };
 
-  const fetchBatchDetail = useCallback(async (batchId: string) => {
+  const fetchBatchDetail = async (batchId: string) => {
     setDetailLoading(true);
     try {
-      const res = await authFetch(`${API_BASE}/batches/${batchId}`);
-      if (!res.ok) throw new Error('Failed to fetch batch details');
-      const data = await res.json();
-      setDetailBatch(data);
+      setDetailBatch(await batchService.getById(batchId));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch batch details');
     } finally {
       setDetailLoading(false);
     }
-  }, []);
+  };
 
   useEffect(() => {
     fetchColleges().finally(() => setLoading(false));
-  }, [fetchColleges]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Cascading: college change -> load departments
   useEffect(() => {
@@ -172,7 +165,8 @@ export default function BatchManagementPage() {
       setSelectedDeptId('');
       setBatches([]);
     }
-  }, [selectedCollegeId, fetchDepartments]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCollegeId]);
 
   // Department change -> load batches
   useEffect(() => {
@@ -181,7 +175,8 @@ export default function BatchManagementPage() {
     } else {
       setBatches([]);
     }
-  }, [selectedDeptId, fetchBatches]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDeptId]);
 
   // ─── Batch CRUD ─────────────────────────────────────────────────────────
 
@@ -189,19 +184,11 @@ export default function BatchManagementPage() {
     if (!createName.trim() || !selectedDeptId) return;
     setCreateLoading(true);
     try {
-      const res = await authFetch(`${API_BASE}/departments/${selectedDeptId}/batches`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: createName.trim(),
-          year: createYear ? parseInt(createYear) : null,
-          semester: createSemester ? parseInt(createSemester) : null,
-        }),
+      await batchService.create(selectedDeptId, {
+        name: createName.trim(),
+        year: createYear ? parseInt(createYear) : null,
+        semester: createSemester ? parseInt(createSemester) : null,
       });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || 'Failed to create batch');
-      }
       setCreateOpen(false);
       setCreateName('');
       setCreateYear('');
@@ -225,19 +212,11 @@ export default function BatchManagementPage() {
     if (!editBatch || !editName.trim()) return;
     setEditLoading(true);
     try {
-      const res = await authFetch(`${API_BASE}/batches/${editBatch.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: editName.trim(),
-          year: editYear ? parseInt(editYear) : null,
-          semester: editSemester ? parseInt(editSemester) : null,
-        }),
+      await batchService.update(editBatch.id, {
+        name: editName.trim(),
+        year: editYear ? parseInt(editYear) : null,
+        semester: editSemester ? parseInt(editSemester) : null,
       });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || 'Failed to update batch');
-      }
       setEditBatch(null);
       if (selectedDeptId) await fetchBatches(selectedDeptId);
     } catch (err) {
@@ -251,13 +230,7 @@ export default function BatchManagementPage() {
     if (!deleteBatch) return;
     setDeleteLoading(true);
     try {
-      const res = await authFetch(`${API_BASE}/batches/${deleteBatch.id}`, {
-        method: 'DELETE',
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || 'Failed to delete batch');
-      }
+      await batchService.delete(deleteBatch.id);
       setDeleteBatch(null);
       if (detailBatch?.id === deleteBatch.id) setDetailBatch(null);
       if (selectedDeptId) await fetchBatches(selectedDeptId);
@@ -281,14 +254,10 @@ export default function BatchManagementPage() {
     setAddMemberLoading(true);
     try {
       const emails = addMemberEmails.split(',').map((e) => e.trim()).filter(Boolean);
-      const res = await authFetch(`${API_BASE}/batches/${addMemberBatchId}/${addMemberType}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ emails }),
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || `Failed to add ${addMemberType}`);
+      if (addMemberType === 'students') {
+        await batchService.addStudents(addMemberBatchId, { emails });
+      } else {
+        await batchService.addTeachers(addMemberBatchId, { emails });
       }
       setAddMemberType(null);
       setAddMemberEmails('');
@@ -303,12 +272,10 @@ export default function BatchManagementPage() {
 
   const handleRemoveMember = async (batchId: string, userId: string, type: 'students' | 'teachers') => {
     try {
-      const res = await authFetch(`${API_BASE}/batches/${batchId}/${type}/${userId}`, {
-        method: 'DELETE',
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || `Failed to remove ${type.slice(0, -1)}`);
+      if (type === 'students') {
+        await batchService.removeStudent(batchId, userId);
+      } else {
+        await batchService.removeTeacher(batchId, userId);
       }
       await fetchBatchDetail(batchId);
       if (selectedDeptId) await fetchBatches(selectedDeptId);

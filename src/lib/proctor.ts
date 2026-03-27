@@ -1,4 +1,4 @@
-import { API_BASE, authFetch } from './api';
+import { proctorService } from '@/services/proctor.service';
 
 type ProctorEventType = 'TAB_SWITCH' | 'WINDOW_BLUR' | 'FULLSCREEN_EXIT' | 'SCREENSHOT' | 'COPY_PASTE' | 'RIGHT_CLICK';
 
@@ -24,8 +24,12 @@ class ProctorMonitor {
   // Periodic screenshots when not in fullscreen
   private screenshotInterval: ReturnType<typeof setInterval> | null = null;
 
+  // Periodic screenshots during normal exam flow
+  private periodicScreenshotInterval: ReturnType<typeof setInterval> | null = null;
+
   // Bound handlers for cleanup
   private handleFullscreenChange: () => void;
+  private handleVisibilityChange: () => void;
   private handleCopy: (e: ClipboardEvent) => void;
   private handlePaste: (e: ClipboardEvent) => void;
   private handleContextMenu: (e: MouseEvent) => void;
@@ -34,6 +38,7 @@ class ProctorMonitor {
     this.config = config;
 
     this.handleFullscreenChange = this._onFullscreenChange.bind(this);
+    this.handleVisibilityChange = this._onVisibilityChange.bind(this);
     this.handleCopy = this._onCopy.bind(this);
     this.handlePaste = this._onPaste.bind(this);
     this.handleContextMenu = this._onContextMenu.bind(this);
@@ -103,9 +108,15 @@ class ProctorMonitor {
     }
 
     document.addEventListener('fullscreenchange', this.handleFullscreenChange);
+    document.addEventListener('visibilitychange', this.handleVisibilityChange);
     document.addEventListener('copy', this.handleCopy);
     document.addEventListener('paste', this.handlePaste);
     document.addEventListener('contextmenu', this.handleContextMenu);
+
+    // Start periodic screenshots every 30s to capture what user is doing
+    this.periodicScreenshotInterval = setInterval(() => {
+      if (this.active) this.captureScreenshot();
+    }, 30000);
   }
 
   stop() {
@@ -115,6 +126,7 @@ class ProctorMonitor {
     this.intentionalExit = true;
 
     document.removeEventListener('fullscreenchange', this.handleFullscreenChange);
+    document.removeEventListener('visibilitychange', this.handleVisibilityChange);
     document.removeEventListener('copy', this.handleCopy);
     document.removeEventListener('paste', this.handlePaste);
     document.removeEventListener('contextmenu', this.handleContextMenu);
@@ -123,6 +135,10 @@ class ProctorMonitor {
     if (this.screenshotInterval) {
       clearInterval(this.screenshotInterval);
       this.screenshotInterval = null;
+    }
+    if (this.periodicScreenshotInterval) {
+      clearInterval(this.periodicScreenshotInterval);
+      this.periodicScreenshotInterval = null;
     }
 
     // Stop screen capture stream — this removes the browser "sharing" indicator
@@ -204,6 +220,27 @@ class ProctorMonitor {
     }, 500);
   }
 
+  private _onVisibilityChange() {
+    if (!this.active || document.visibilityState !== 'hidden') return;
+
+    this.violationCount++;
+    const remaining = this.config.maxViolations - this.violationCount;
+
+    // Capture screenshot immediately to see what user switched to
+    this.captureScreenshot();
+
+    // Log event
+    this.logEvent('TAB_SWITCH', { timestamp: Date.now(), violationCount: this.violationCount });
+
+    // Notify callback
+    this.config.onViolation?.('TAB_SWITCH', this.violationCount, remaining);
+
+    // Check if max violations reached
+    if (this.violationCount >= this.config.maxViolations) {
+      this.config.onAutoSubmit?.();
+    }
+  }
+
   private _onCopy(e: ClipboardEvent) {
     e.preventDefault();
     this.logEvent('COPY_PASTE', { action: 'copy', timestamp: Date.now() });
@@ -223,14 +260,10 @@ class ProctorMonitor {
 
   private async logEvent(eventType: ProctorEventType, metadata?: any) {
     try {
-      await authFetch(`${API_BASE}/proctor/event`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          testAttemptId: this.config.testAttemptId,
-          eventType,
-          metadata: metadata ? JSON.stringify(metadata) : undefined,
-        }),
+      await proctorService.logEvent({
+        testAttemptId: this.config.testAttemptId,
+        eventType,
+        metadata: metadata ? JSON.stringify(metadata) : undefined,
       });
     } catch (err) {
       console.error('Failed to log proctor event:', err);
@@ -262,14 +295,7 @@ class ProctorMonitor {
       });
       if (!blob) return;
 
-      const formData = new FormData();
-      formData.append('file', blob, `screenshot-${Date.now()}.png`);
-      formData.append('testAttemptId', this.config.testAttemptId);
-
-      await authFetch(`${API_BASE}/proctor/screenshot`, {
-        method: 'POST',
-        body: formData,
-      });
+      await proctorService.uploadScreenshot(this.config.testAttemptId, blob);
     } catch (err) {
       console.error('Failed to capture screenshot:', err);
     }

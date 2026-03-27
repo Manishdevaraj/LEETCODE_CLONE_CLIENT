@@ -1,6 +1,7 @@
-// @ts-nocheck
 import { useEffect, useState } from 'react';
-import { API_BASE, authFetch } from '@/lib/api';
+import { API_BASE } from '@/lib/axios';
+import { testService } from '@/services/test.service';
+import { proctorService } from '@/services/proctor.service';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -62,10 +63,8 @@ export default function ProctorReviewPage() {
 
   const loadTests = async () => {
     try {
-      const res = await authFetch(`${API_BASE}/tests`);
-      const data = await res.json();
-      const allTests = Array.isArray(data) ? data : data.data || [];
-      setTests(allTests.filter((t: TestItem) => t.isProctored));
+      const allTests = await testService.getAll();
+      setTests((Array.isArray(allTests) ? allTests : []).filter((t: TestItem) => t.isProctored) as TestItem[]);
     } catch (err) {
       console.error('Failed to load tests:', err);
     }
@@ -77,9 +76,8 @@ export default function ProctorReviewPage() {
     setEvents([]);
     setLoading(true);
     try {
-      const res = await authFetch(`${API_BASE}/proctor/events/${test.id}/summary`);
-      const data = await res.json();
-      setSummaries(Array.isArray(data) ? data : []);
+      const data = await proctorService.getTestSummary(test.id);
+      setSummaries(Array.isArray(data) ? data as unknown as StudentSummary[] : []);
     } catch (err) {
       console.error('Failed to load summary:', err);
     } finally {
@@ -91,9 +89,8 @@ export default function ProctorReviewPage() {
     setSelectedStudent(student);
     setLoading(true);
     try {
-      const res = await authFetch(`${API_BASE}/proctor/events/${selectedTest!.id}/${student.userId}`);
-      const data = await res.json();
-      setEvents(Array.isArray(data) ? data : []);
+      const data = await proctorService.getStudentEvents(selectedTest!.id, student.userId);
+      setEvents(Array.isArray(data) ? data as unknown as ProctorEvent[] : []);
     } catch (err) {
       console.error('Failed to load events:', err);
     } finally {
@@ -103,11 +100,7 @@ export default function ProctorReviewPage() {
 
   const toggleFlag = async (eventId: string, currentFlagged: boolean) => {
     try {
-      await authFetch(`${API_BASE}/proctor/events/${eventId}/flag`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ flagged: !currentFlagged }),
-      });
+      await proctorService.toggleFlag(eventId, { flagged: !currentFlagged });
       setEvents((prev) =>
         prev.map((e) => (e.id === eventId ? { ...e, flagged: !currentFlagged } : e))
       );

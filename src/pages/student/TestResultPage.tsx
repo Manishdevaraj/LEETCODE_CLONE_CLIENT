@@ -1,10 +1,9 @@
-// @ts-nocheck
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import Navbar from '@/components/Navbar';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { API_BASE, authFetch } from '@/lib/api';
+import { testAttemptService } from '@/services/test-attempt.service';
 
 interface McqAnswerResult {
   mcqQuestionId: string;
@@ -52,25 +51,25 @@ export default function TestResultPage() {
 
   useEffect(() => {
     if (!testId) return;
-    authFetch(`${API_BASE}/test-attempts/${testId}`)
-      .then(async (res) => {
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Failed to load results');
-        const attempt = data.attempt || data;
+    testAttemptService.getAttempt(testId)
+      .then((data) => {
+        const attempt = (data as Record<string, unknown>).attempt || data;
+        const a = attempt as Record<string, unknown>;
+        const test = (a.test || { title: 'Test', type: 'MIXED', durationMins: 0 }) as Record<string, unknown>;
         setResult({
-          id: attempt.id,
-          testId: attempt.testId || testId,
-          status: attempt.status,
-          score: attempt.score ?? 0,
-          totalMarks: attempt.totalMarks ?? attempt.test?.totalMarks ?? 0,
-          startedAt: attempt.startedAt,
-          finishedAt: attempt.finishedAt,
-          test: attempt.test || { title: 'Test', type: 'MIXED', durationMins: 0 },
-          mcqResults: attempt.mcqResults || attempt.mcqAnswers || [],
-          codeResults: attempt.codeResults || attempt.codeSubmissions || [],
+          id: a.id as string,
+          testId: (a.testId as string) || testId,
+          status: a.status as string,
+          score: (a.score as number) ?? 0,
+          totalMarks: (a.totalMarks as number) ?? (test.totalMarks as number) ?? 0,
+          startedAt: a.startedAt as string,
+          finishedAt: (a.finishedAt as string) || null,
+          test: test as TestAttemptResult['test'],
+          mcqResults: ((a.mcqResults || a.mcqAnswers || []) as McqAnswerResult[]),
+          codeResults: ((a.codeResults || a.codeSubmissions || []) as CodeSubmissionResult[]),
         });
       })
-      .catch((err) => setError(err.message))
+      .catch((err: Error) => setError(err.message))
       .finally(() => setIsLoading(false));
   }, [testId]);
 

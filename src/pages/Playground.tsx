@@ -1,5 +1,3 @@
-// @ts-nocheck
-//@ts-ignore
 import { useCallback, useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import TestCaseRunner, { CodeEditor, DescriptionUi } from "@/components/Playground"
@@ -9,7 +7,10 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "@/components/ui/resizable"
-import { fetchQuestion, submitCode, type Question, type RunResult, type SubmissionResult } from '@/lib/editor.action'
+import { questionService } from '@/services/question.service'
+import { executionService } from '@/services/execution.service'
+import type { Question } from '@/types/question.types'
+import type { RunResult, SubmissionResult } from '@/types/submission.types'
 
 const Playground = () => {
   const { questionId } = useParams<{ questionId: string }>();
@@ -28,7 +29,7 @@ const Playground = () => {
 
   useEffect(() => {
     if (!questionId) return;
-    fetchQuestion(questionId)
+    questionService.getById(questionId)
       .then(setQuestion)
       .catch(console.error);
   }, [questionId]);
@@ -39,7 +40,7 @@ const Playground = () => {
     setSubmissionResult(null);
     setTotalSubmissionCount(0);
     setRunResult(null);
-    submitCode(
+    executionService.submitCode(
       language,
       code,
       questionId,

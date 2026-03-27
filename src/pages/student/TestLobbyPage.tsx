@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import Navbar from '@/components/Navbar';
@@ -6,7 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
-import { API_BASE, authFetch } from '@/lib/api';
+import { testService } from '@/services/test.service';
+import { testAttemptService } from '@/services/test-attempt.service';
 
 interface QuestionBreakdown {
   mcq: { count: number; marks: number };
@@ -47,14 +47,12 @@ export default function TestLobbyPage() {
   useEffect(() => {
     if (!secureToken) return;
     setIsLoading(true);
-    authFetch(`${API_BASE}/tests/join/${secureToken}`)
-      .then(async (res) => {
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Failed to load test');
-        const raw = data.test || data;
-        setTestInfo({ ...raw, type: raw.testType || raw.type });
+    testService.joinByToken(secureToken)
+      .then((data) => {
+        const raw = (data.test || data) as Record<string, unknown>;
+        setTestInfo({ ...raw, type: (raw.testType || raw.type) } as unknown as TestPreview);
       })
-      .catch((err) => setError(err.message))
+      .catch((err: Error) => setError(err.message))
       .finally(() => setIsLoading(false));
   }, [secureToken]);
 
@@ -73,22 +71,10 @@ export default function TestLobbyPage() {
     setStartError('');
 
     try {
-      const res = await authFetch(`${API_BASE}/test-attempts/${testInfo.id}/verify-and-start`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ accessCode: accessCode.trim() || undefined, password }),
+      await testAttemptService.verifyAndStart(testInfo.id, {
+        accessCode: accessCode.trim() || undefined,
+        password,
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || data.error || 'Failed to start test');
-
-      // Enter fullscreen before navigating to exam for proctored tests
-      if (testInfo.isProctored && !document.fullscreenElement) {
-        try {
-          await document.documentElement.requestFullscreen();
-        } catch (err) {
-          console.error('Failed to enter fullscreen:', err);
-        }
-      }
 
       navigate(`/student/tests/${testInfo.id}/exam`);
     } catch (err: any) {

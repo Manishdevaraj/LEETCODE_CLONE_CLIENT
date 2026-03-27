@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
-import { API_BASE, authFetch } from '@/lib/api';
+import { useState, useEffect } from 'react';
+import { roleService } from '@/services/role.service';
 import Navbar from '@/components/Navbar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -83,37 +83,33 @@ export default function RoleManagementPage() {
 
   // ─── Data fetching ──────────────────────────────────────────────────────
 
-  const fetchRoles = useCallback(async () => {
+  const fetchRoles = async () => {
     try {
-      const res = await authFetch(`${API_BASE}/roles`);
-      if (!res.ok) throw new Error('Failed to fetch roles');
-      const data = await res.json();
-      setRoles(data);
+      setRoles(await roleService.getAll());
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch roles');
     }
-  }, []);
+  };
 
-  const fetchPermissionsAndPages = useCallback(async () => {
+  const fetchPermissionsAndPages = async () => {
     try {
-      const [permRes, pageRes] = await Promise.all([
-        authFetch(`${API_BASE}/permissions`),
-        authFetch(`${API_BASE}/page-access`),
+      const [perms, pages] = await Promise.all([
+        roleService.getAllPermissions(),
+        roleService.getAllPageAccess(),
       ]);
-      if (!permRes.ok) throw new Error('Failed to fetch permissions');
-      if (!pageRes.ok) throw new Error('Failed to fetch page access');
-      setAllPermissions(await permRes.json());
-      setAllPageAccess(await pageRes.json());
+      setAllPermissions(perms);
+      setAllPageAccess(pages);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch metadata');
     }
-  }, []);
+  };
 
   useEffect(() => {
     Promise.all([fetchRoles(), fetchPermissionsAndPages()]).finally(() =>
       setLoading(false)
     );
-  }, [fetchRoles, fetchPermissionsAndPages]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ─── Create Role ─────────────────────────────────────────────────────────
 
@@ -121,15 +117,7 @@ export default function RoleManagementPage() {
     if (!createName.trim()) return;
     setCreateLoading(true);
     try {
-      const res = await authFetch(`${API_BASE}/roles`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: createName.trim(), description: createDesc.trim() || null }),
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || 'Failed to create role');
-      }
+      await roleService.create({ name: createName.trim(), description: createDesc.trim() || null });
       setCreateOpen(false);
       setCreateName('');
       setCreateDesc('');
@@ -153,15 +141,7 @@ export default function RoleManagementPage() {
     if (!editRole || !editName.trim()) return;
     setEditLoading(true);
     try {
-      const res = await authFetch(`${API_BASE}/roles/${editRole.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: editName.trim(), description: editDesc.trim() || null }),
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || 'Failed to update role');
-      }
+      await roleService.update(editRole.id, { name: editName.trim(), description: editDesc.trim() || null });
       setEditRole(null);
       await fetchRoles();
     } catch (err) {
@@ -177,13 +157,7 @@ export default function RoleManagementPage() {
     if (!deleteRole) return;
     setDeleteLoading(true);
     try {
-      const res = await authFetch(`${API_BASE}/roles/${deleteRole.id}`, {
-        method: 'DELETE',
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || 'Failed to delete role');
-      }
+      await roleService.delete(deleteRole.id);
       setDeleteRole(null);
       await fetchRoles();
     } catch (err) {
@@ -199,12 +173,9 @@ export default function RoleManagementPage() {
     setPermRole(role);
     setPermLoading(true);
     try {
-      // Fetch role details to get current permissions and page access
-      const res = await authFetch(`${API_BASE}/roles/${role.id}`);
-      if (!res.ok) throw new Error('Failed to fetch role details');
-      const data: Role = await res.json();
-      setSelectedPermIds(new Set((data.permissions ?? []).map((p) => p.id)));
-      setSelectedPageIds(new Set((data.pageAccess ?? []).map((p) => p.id)));
+      const data = await roleService.getById(role.id);
+      setSelectedPermIds(new Set((data.permissions ?? []).map((p: Permission) => p.id)));
+      setSelectedPageIds(new Set((data.pageAccess ?? []).map((p: PageAccess) => p.id)));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load role details');
       setPermRole(null);
@@ -235,20 +206,10 @@ export default function RoleManagementPage() {
     if (!permRole) return;
     setPermSaving(true);
     try {
-      const [permRes, pageRes] = await Promise.all([
-        authFetch(`${API_BASE}/roles/${permRole.id}/permissions`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ permissionIds: Array.from(selectedPermIds) }),
-        }),
-        authFetch(`${API_BASE}/roles/${permRole.id}/page-access`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ pageAccessIds: Array.from(selectedPageIds) }),
-        }),
+      await Promise.all([
+        roleService.updatePermissions(permRole.id, Array.from(selectedPermIds)),
+        roleService.updatePageAccess(permRole.id, Array.from(selectedPageIds)),
       ]);
-      if (!permRes.ok) throw new Error('Failed to update permissions');
-      if (!pageRes.ok) throw new Error('Failed to update page access');
       setPermRole(null);
       await fetchRoles();
     } catch (err) {

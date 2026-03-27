@@ -1,8 +1,7 @@
-// @ts-nocheck
-//@ts-ignore
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { fetchQuestions, type QuestionSummary } from '@/lib/editor.action'
+import { useQuestionStore } from '@/stores/questionStore'
+import type { QuestionSummary } from '@/types/question.types'
 import Navbar from '@/components/Navbar'
 
 const difficultyConfig: Record<QuestionSummary['difficulty'], { label: string; bg: string; text: string }> = {
@@ -18,18 +17,13 @@ function acceptanceRate(q: QuestionSummary): string {
 
 export default function QuestionsPage() {
   const navigate = useNavigate();
-  const [questions, setQuestions] = useState<QuestionSummary[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { questions, isLoading: loading, error, fetchQuestions } = useQuestionStore();
   const [search, setSearch] = useState('');
   const [diffFilter, setDiffFilter] = useState<string>('ALL');
 
   useEffect(() => {
-    fetchQuestions()
-      .then(setQuestions)
-      .catch((err: Error) => setError(err.message))
-      .finally(() => setLoading(false));
-  }, []);
+    fetchQuestions();
+  }, [fetchQuestions]);
 
   const filtered = questions.filter(q => {
     if (diffFilter !== 'ALL' && q.difficulty !== diffFilter) return false;

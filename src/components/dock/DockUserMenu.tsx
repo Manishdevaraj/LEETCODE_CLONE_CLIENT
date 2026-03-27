@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '@/contexts/AuthContext';
+import { useAuthStore } from '@/stores/authStore';
 import { LogOut, User } from 'lucide-react';
 import {
   DropdownMenu,
@@ -11,7 +11,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 
 export default function DockUserMenu() {
-  const { user, logout } = useAuth();
+  const { user, logout } = useAuthStore();
   const navigate = useNavigate();
 
   const handleLogout = () => {

@@ -15,6 +15,7 @@ export default function ProctorOverlay({ isProctored, testAttemptId, maxViolatio
   const [violations, setViolations] = useState(0);
   const [remaining, setRemaining] = useState(maxViolations);
   const [showWarning, setShowWarning] = useState(false);
+  const [lastViolationType, setLastViolationType] = useState<string>('');
   const [showScreenSharePrompt, setShowScreenSharePrompt] = useState(false);
 
   const startMonitor = () => {
@@ -26,6 +27,7 @@ export default function ProctorOverlay({ isProctored, testAttemptId, maxViolatio
       onViolation: (type: ProctorEventType, violationCount: number, rem: number) => {
         setViolations(violationCount);
         setRemaining(rem);
+        setLastViolationType(type);
         setShowWarning(true);
       },
       onAutoSubmit: () => {
@@ -60,7 +62,7 @@ export default function ProctorOverlay({ isProctored, testAttemptId, maxViolatio
 
   // Auto-dismiss warning when fullscreen is re-entered
   useEffect(() => {
-    if (!showWarning) return;
+    if (!showWarning || lastViolationType === 'TAB_SWITCH') return;
 
     const handleFsChange = () => {
       if (document.fullscreenElement) {
@@ -70,7 +72,7 @@ export default function ProctorOverlay({ isProctored, testAttemptId, maxViolatio
 
     document.addEventListener('fullscreenchange', handleFsChange);
     return () => document.removeEventListener('fullscreenchange', handleFsChange);
-  }, [showWarning]);
+  }, [showWarning, lastViolationType]);
 
   const handleRetryScreenShare = () => {
     setShowScreenSharePrompt(false);
@@ -122,7 +124,7 @@ export default function ProctorOverlay({ isProctored, testAttemptId, maxViolatio
         </div>
       )}
 
-      {/* Warning overlay on fullscreen violation */}
+      {/* Warning overlay on violation */}
       {showWarning && (
         <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center">
           <div className="bg-zinc-900 border border-zinc-700 rounded-xl p-8 max-w-md w-full text-center shadow-2xl">
@@ -133,18 +135,26 @@ export default function ProctorOverlay({ isProctored, testAttemptId, maxViolatio
               </svg>
             </div>
 
-            <h2 className="text-xl font-bold text-white mb-2">Fullscreen Violation Detected</h2>
+            <h2 className="text-xl font-bold text-white mb-2">
+              {lastViolationType === 'TAB_SWITCH' ? 'Tab Switch Detected' : 'Fullscreen Violation Detected'}
+            </h2>
             <p className="text-sm text-zinc-400 mb-6">
-              You have <span className="text-red-400 font-semibold">{remaining}</span> attempt(s) remaining before auto-submission.
+              {lastViolationType === 'TAB_SWITCH'
+                ? 'Switching tabs during a proctored test is not allowed.'
+                : 'Exiting fullscreen during a proctored test is not allowed.'}
+              {' '}You have <span className="text-red-400 font-semibold">{remaining}</span> attempt(s) remaining before auto-submission.
             </p>
 
             <button
               onClick={() => {
-                document.documentElement.requestFullscreen().catch(() => {});
+                setShowWarning(false);
+                if (!document.fullscreenElement) {
+                  document.documentElement.requestFullscreen().catch(() => {});
+                }
               }}
               className="w-full bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white font-semibold py-3 px-6 rounded-lg transition-all cursor-pointer"
             >
-              Return to Fullscreen
+              {lastViolationType === 'TAB_SWITCH' ? 'Continue Test' : 'Return to Fullscreen'}
             </button>
           </div>
         </div>

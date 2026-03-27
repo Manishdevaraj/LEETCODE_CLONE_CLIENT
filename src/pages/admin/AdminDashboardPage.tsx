@@ -1,6 +1,5 @@
-// @ts-nocheck
-import { useEffect, useState } from 'react';
-import { API_BASE, authFetch } from '@/lib/api';
+import { useEffect } from 'react';
+import { useDashboardStore } from '@/stores/dashboardStore';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -12,22 +11,13 @@ import {
 const PIE_COLORS = ['#3b82f6', '#8b5cf6', '#10b981', '#f59e0b', '#ef4444', '#06b6d4'];
 
 export default function AdminDashboardPage() {
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const { data, isLoading, error, fetchDashboard } = useDashboardStore();
 
   useEffect(() => {
-    authFetch(`${API_BASE}/admin/dashboard`)
-      .then(async (res) => {
-        if (!res.ok) throw new Error('Failed to load dashboard data');
-        return res.json();
-      })
-      .then(setData)
-      .catch((err) => setError(err.message))
-      .finally(() => setLoading(false));
-  }, []);
+    fetchDashboard();
+  }, [fetchDashboard]);
 
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="min-h-screen bg-zinc-950 flex flex-col">
         <Navbar />

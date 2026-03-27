@@ -1,6 +1,8 @@
-// @ts-nocheck
 import { useState, useEffect, useCallback } from 'react';
-import { API_BASE, authFetch } from '@/lib/api';
+import { reportService } from '@/services/report.service';
+import { testService } from '@/services/test.service';
+import { courseService } from '@/services/course.service';
+import { userService } from '@/services/user.service';
 import Navbar from '@/components/Navbar';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -37,9 +39,8 @@ import {
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-async function downloadExcel(url: string, filename: string) {
-  const res = await authFetch(url);
-  const blob = await res.blob();
+async function downloadExcelFile(url: string, filename: string) {
+  const blob = await reportService.downloadExcel(url);
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = filename;
@@ -111,14 +112,14 @@ function TestResultsTab({ tests }: { tests: any[] }) {
     setLoading(true);
     setError('');
     try {
-      const res = await authFetch(`${API_BASE}/reports/test/${id}?format=json`);
-      if (!res.ok) throw new Error('Failed to load test results');
-      setData(await res.json());
+      const result = await reportService.getTestReport(id);
+      setData(result);
     } catch (e: any) {
-      setError(e.message);
+      setError(e.message ?? 'Failed to load test results');
     } finally {
       setLoading(false);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -156,8 +157,8 @@ function TestResultsTab({ tests }: { tests: any[] }) {
             variant="outline"
             className="border-zinc-700 text-zinc-300 hover:bg-zinc-800"
             onClick={() =>
-              downloadExcel(
-                `${API_BASE}/reports/test/${testId}?format=xlsx`,
+              downloadExcelFile(
+                `/reports/test/${testId}?format=xlsx`,
                 'test-results.xlsx'
               )
             }
@@ -254,13 +255,9 @@ function ParticipationTab({ tests }: { tests: any[] }) {
     if (!testId) return;
     setLoading(true);
     setError('');
-    authFetch(`${API_BASE}/reports/test/${testId}/participation?format=json`)
-      .then((res) => {
-        if (!res.ok) throw new Error('Failed to load participation data');
-        return res.json();
-      })
+    reportService.getTestParticipation(testId)
       .then(setData)
-      .catch((e) => setError(e.message))
+      .catch((e: any) => setError(e.message ?? 'Failed to load participation data'))
       .finally(() => setLoading(false));
   }, [testId]);
 
@@ -275,8 +272,8 @@ function ParticipationTab({ tests }: { tests: any[] }) {
             variant="outline"
             className="border-zinc-700 text-zinc-300 hover:bg-zinc-800"
             onClick={() =>
-              downloadExcel(
-                `${API_BASE}/reports/test/${testId}/participation?format=xlsx`,
+              downloadExcelFile(
+                `/reports/test/${testId}/participation?format=xlsx`,
                 'participation.xlsx'
               )
             }
@@ -350,13 +347,9 @@ function BatchPerformanceTab() {
     if (!batchId.trim()) return;
     setLoading(true);
     setError('');
-    authFetch(`${API_BASE}/reports/batch/${batchId.trim()}?format=json`)
-      .then((res) => {
-        if (!res.ok) throw new Error('Failed to load batch performance');
-        return res.json();
-      })
+    reportService.getBatchReport(batchId.trim())
       .then(setData)
-      .catch((e) => setError(e.message))
+      .catch((e: any) => setError(e.message ?? 'Failed to load batch performance'))
       .finally(() => setLoading(false));
   }, [batchId]);
 
@@ -380,8 +373,8 @@ function BatchPerformanceTab() {
             variant="outline"
             className="border-zinc-700 text-zinc-300 hover:bg-zinc-800"
             onClick={() =>
-              downloadExcel(
-                `${API_BASE}/reports/batch/${batchId.trim()}?format=xlsx`,
+              downloadExcelFile(
+                `/reports/batch/${batchId.trim()}?format=xlsx`,
                 'batch-performance.xlsx'
               )
             }
@@ -508,13 +501,9 @@ function CollegeComparisonTab() {
 
   useEffect(() => {
     setLoading(true);
-    authFetch(`${API_BASE}/reports/college-comparison?format=json`)
-      .then((res) => {
-        if (!res.ok) throw new Error('Failed to load college comparison');
-        return res.json();
-      })
+    reportService.getCollegeComparison()
       .then(setData)
-      .catch((e) => setError(e.message))
+      .catch((e: any) => setError(e.message ?? 'Failed to load college comparison'))
       .finally(() => setLoading(false));
   }, []);
 
@@ -528,8 +517,8 @@ function CollegeComparisonTab() {
           variant="outline"
           className="border-zinc-700 text-zinc-300 hover:bg-zinc-800 ml-auto"
           onClick={() =>
-            downloadExcel(
-              `${API_BASE}/reports/college-comparison?format=xlsx`,
+            downloadExcelFile(
+              `/reports/college-comparison?format=xlsx`,
               'college-comparison.xlsx'
             )
           }
@@ -612,12 +601,10 @@ function StudentCardTab() {
     setError('');
     setSearchResults([]);
     try {
-      const res = await authFetch(`${API_BASE}/users?search=${encodeURIComponent(query.trim())}`);
-      if (!res.ok) throw new Error('Search failed');
-      const json = await res.json();
-      setSearchResults(json.users ?? json ?? []);
+      const results = await userService.searchUsers(query.trim());
+      setSearchResults(Array.isArray(results) ? results : []);
     } catch (e: any) {
-      setError(e.message);
+      setError(e.message ?? 'Search failed');
     } finally {
       setSearching(false);
     }
@@ -629,14 +616,14 @@ function StudentCardTab() {
     setError('');
     setSearchResults([]);
     try {
-      const res = await authFetch(`${API_BASE}/reports/student/${id}?format=json`);
-      if (!res.ok) throw new Error('Failed to load student report');
-      setData(await res.json());
+      const result = await reportService.getStudentReport(id);
+      setData(result);
     } catch (e: any) {
-      setError(e.message);
+      setError(e.message ?? 'Failed to load student report');
     } finally {
       setLoading(false);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const trendData = data?.trends ?? data?.testScores ?? [];
@@ -660,8 +647,8 @@ function StudentCardTab() {
             variant="outline"
             className="border-zinc-700 text-zinc-300 hover:bg-zinc-800 ml-auto"
             onClick={() =>
-              downloadExcel(
-                `${API_BASE}/reports/student/${userId}?format=xlsx`,
+              downloadExcelFile(
+                `/reports/student/${userId}?format=xlsx`,
                 'student-card.xlsx'
               )
             }
@@ -815,9 +802,8 @@ function CourseProgressTab() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    authFetch(`${API_BASE}/courses`)
-      .then((res) => res.json())
-      .then((json) => setCourses(json.courses ?? json ?? []))
+    courseService.getAll()
+      .then((data) => setCourses(Array.isArray(data) ? data : []))
       .catch(() => {});
   }, []);
 
@@ -825,13 +811,9 @@ function CourseProgressTab() {
     if (!courseId) return;
     setLoading(true);
     setError('');
-    authFetch(`${API_BASE}/reports/course/${courseId}/progress?format=json`)
-      .then((res) => {
-        if (!res.ok) throw new Error('Failed to load course progress');
-        return res.json();
-      })
+    reportService.getCourseProgressReport(courseId)
       .then(setData)
-      .catch((e) => setError(e.message))
+      .catch((e: any) => setError(e.message ?? 'Failed to load course progress'))
       .finally(() => setLoading(false));
   }, [courseId]);
 
@@ -857,8 +839,8 @@ function CourseProgressTab() {
             variant="outline"
             className="border-zinc-700 text-zinc-300 hover:bg-zinc-800"
             onClick={() =>
-              downloadExcel(
-                `${API_BASE}/reports/course/${courseId}/progress?format=xlsx`,
+              downloadExcelFile(
+                `/reports/course/${courseId}/progress?format=xlsx`,
                 'course-progress.xlsx'
               )
             }
@@ -928,13 +910,9 @@ function TrendsTab() {
   useEffect(() => {
     setLoading(true);
     setError('');
-    authFetch(`${API_BASE}/reports/trends?period=${period}&format=json`)
-      .then((res) => {
-        if (!res.ok) throw new Error('Failed to load trends');
-        return res.json();
-      })
+    reportService.getTrends(period)
       .then(setData)
-      .catch((e) => setError(e.message))
+      .catch((e: any) => setError(e.message ?? 'Failed to load trends'))
       .finally(() => setLoading(false));
   }, [period]);
 
@@ -969,8 +947,8 @@ function TrendsTab() {
           variant="outline"
           className="border-zinc-700 text-zinc-300 hover:bg-zinc-800 ml-auto"
           onClick={() =>
-            downloadExcel(
-              `${API_BASE}/reports/trends?period=${period}&format=xlsx`,
+            downloadExcelFile(
+              `/reports/trends?period=${period}&format=xlsx`,
               `trends-${period}.xlsx`
             )
           }
@@ -1064,9 +1042,8 @@ export default function ReportsPage() {
   const [tests, setTests] = useState<any[]>([]);
 
   useEffect(() => {
-    authFetch(`${API_BASE}/tests`)
-      .then((res) => res.json())
-      .then((json) => setTests(json.tests ?? json ?? []))
+    testService.getAll()
+      .then((data) => setTests(Array.isArray(data) ? data : []))
       .catch(() => {});
   }, []);
 

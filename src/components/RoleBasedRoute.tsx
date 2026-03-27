@@ -1,5 +1,5 @@
 import { Navigate } from 'react-router-dom';
-import { useAuth } from '@/contexts/AuthContext';
+import { useAuthStore } from '@/stores/authStore';
 import type { ReactNode } from 'react';
 
 interface RoleBasedRouteProps {
@@ -8,7 +8,7 @@ interface RoleBasedRouteProps {
 }
 
 export default function RoleBasedRoute({ pageAccess, children }: RoleBasedRouteProps) {
-  const { user, isLoading } = useAuth();
+  const { user, isLoading } = useAuthStore();
 
   if (isLoading) {
     return (
@@ -25,7 +25,7 @@ export default function RoleBasedRoute({ pageAccess, children }: RoleBasedRouteP
   }
 
   if (!user) return <Navigate to="/login" replace />;
-  if (!user.pageAccess.includes(pageAccess)) return <Navigate to="/" replace />;
+  if (!user.pageAccess?.includes(pageAccess)) return <Navigate to="/" replace />;
 
   return children;
 }

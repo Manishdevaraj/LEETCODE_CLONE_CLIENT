@@ -1,4 +1,4 @@
-import { useAuth } from '@/contexts/AuthContext';
+import { useAuthStore } from '@/stores/authStore';
 import { type ReactNode } from 'react';
 
 interface PermissionGateProps {
@@ -10,7 +10,7 @@ interface PermissionGateProps {
 }
 
 export function PermissionGate({ requires, requiresAny, pageAccess, children, fallback = null }: PermissionGateProps) {
-  const { user } = useAuth();
+  const { user } = useAuthStore();
   if (!user) return fallback;
 
   if (requires && !requires.every(p => user.permissions.includes(p))) return fallback;

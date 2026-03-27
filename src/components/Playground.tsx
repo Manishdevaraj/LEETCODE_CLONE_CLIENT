@@ -1,5 +1,3 @@
-// @ts-nocheck
-//@ts-ignore
 import { useEffect, useState } from 'react'
 import { IoIosFlask, IoIosTimer } from 'react-icons/io'
 import { MdOutlineDescription } from 'react-icons/md'
@@ -8,7 +6,10 @@ import Editor from "@monaco-editor/react";
 import { FaPlay, FaCheck } from "react-icons/fa";
 import { Button } from './ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { compileRun, fetchSubmissions, type ApiTestCase, type Question, type RunResult, type SubmissionResult, type SubmissionSummary, type SubmissionTestResult } from '@/lib/editor.action'
+import { executionService } from '@/services/execution.service'
+import { submissionService } from '@/services/submission.service'
+import type { ApiTestCase, Question } from '@/types/question.types'
+import type { RunResult, SubmissionResult, SubmissionSummary, SubmissionTestResult } from '@/types/submission.types'
 
 // ─── SubmissionsList ──────────────────────────────────────────────────────────
 
@@ -18,7 +19,7 @@ function SubmissionsList({ questionId }: { questionId: string }) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchSubmissions(questionId)
+    submissionService.getByQuestion(questionId)
       .then(data => { setSubmissions(data); setLoading(false); })
       .catch((err: Error) => { setError(err.message); setLoading(false); });
   }, [questionId]);
@@ -205,7 +206,7 @@ export const CodeEditor = ({ question, isRunning, isSubmitting, onRunStart, onRu
   const runCode = () => {
     if (!question || busy) return;
     onRunStart();
-    compileRun(
+    executionService.compileRun(
       language,
       code,
       question.id,

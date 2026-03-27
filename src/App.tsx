@@ -1,6 +1,7 @@
 // @ts-nocheck
+import { useEffect } from "react";
 import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
-import { AuthProvider, useAuth } from "./contexts/AuthContext";
+import { useAuthStore } from "./stores/authStore";
 import ProtectedRoute from "./components/ProtectedRoute";
 import RoleBasedRoute from "./components/RoleBasedRoute";
 import QuestionsPage from "./pages/QuestionsPage";
@@ -21,6 +22,7 @@ import ReportsPage from "./pages/admin/ReportsPage";
 import CourseManagementPage from "./pages/admin/CourseManagementPage";
 import StudentCoursesPage from "./pages/student/StudentCoursesPage";
 import StudentCourseDetailPage from "./pages/student/StudentCourseDetailPage";
+import CoursePracticePage from "./pages/student/CoursePracticePage";
 import ProctorReviewPage from "./pages/admin/ProctorReviewPage";
 import StudentTestsPage from "./pages/student/StudentTestsPage";
 import TestLobbyPage from "./pages/student/TestLobbyPage";
@@ -28,7 +30,7 @@ import TestExamPage from "./pages/student/TestExamPage";
 import TestResultPage from "./pages/student/TestResultPage";
 
 function HomeRedirect() {
-  const { user, isLoading } = useAuth();
+  const { user, isLoading } = useAuthStore();
 
   if (isLoading) return null;
   if (!user) return <Navigate to="/login" replace />;
@@ -42,8 +44,11 @@ function HomeRedirect() {
 }
 
 function App() {
+  useEffect(() => {
+    useAuthStore.getState().loadUser();
+  }, []);
+
   return (
-    <AuthProvider>
       <Router>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
@@ -105,13 +110,13 @@ function App() {
             <RoleBasedRoute pageAccess="student_tests"><StudentTestsPage /></RoleBasedRoute>
           } />
           <Route path="/student/tests/join/:secureToken" element={
-            <ProtectedRoute><TestLobbyPage /></ProtectedRoute>
+            <RoleBasedRoute pageAccess="student_exam"><TestLobbyPage /></RoleBasedRoute>
           } />
           <Route path="/student/tests/:testId/exam" element={
-            <ProtectedRoute><TestExamPage /></ProtectedRoute>
+            <RoleBasedRoute pageAccess="student_exam"><TestExamPage /></RoleBasedRoute>
           } />
           <Route path="/student/tests/:testId/result" element={
-            <ProtectedRoute><TestResultPage /></ProtectedRoute>
+            <RoleBasedRoute pageAccess="student_exam"><TestResultPage /></RoleBasedRoute>
           } />
           <Route path="/student/courses" element={
             <RoleBasedRoute pageAccess="student_courses"><StudentCoursesPage /></RoleBasedRoute>
@@ -119,9 +124,11 @@ function App() {
           <Route path="/student/courses/:courseId" element={
             <ProtectedRoute><StudentCourseDetailPage /></ProtectedRoute>
           } />
+          <Route path="/student/courses/:courseId/day/:dayNum/practice/:subModuleId" element={
+            <ProtectedRoute><CoursePracticePage /></ProtectedRoute>
+          } />
         </Routes>
       </Router>
-    </AuthProvider>
   );
 }
 

@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Navbar from '@/components/Navbar';
@@ -6,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { API_BASE, authFetch } from '@/lib/api';
+import { testService } from '@/services/test.service';
 
 interface TestCategory {
   id: string;
@@ -328,12 +327,10 @@ export default function StudentTestsPage() {
   async function fetchTests() {
     try {
       setLoading(true);
-      const res = await authFetch(`${API_BASE}/tests/my-tests`);
-      if (!res.ok) throw new Error('Failed to load tests');
-      const data = await res.json();
+      const data = await testService.getMyTests();
       setTests(data);
-    } catch (err: any) {
-      setError(err.message || 'Something went wrong');
+    } catch (err: unknown) {
+      setError((err as Error).message || 'Something went wrong');
     } finally {
       setLoading(false);
     }

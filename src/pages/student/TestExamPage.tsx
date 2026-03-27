@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import Editor from '@monaco-editor/react';
@@ -13,10 +12,11 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog';
-import { TestSessionProvider, useTestSession, type TestQuestionItem } from '@/contexts/TestSessionContext';
+import { useTestSessionStore } from '@/stores/testSessionStore';
+import type { TestQuestionItem } from '@/types/test-attempt.types';
 import ProctorOverlay from '@/components/ProctorOverlay';
-import { compileRun, type RunResult, type SubmissionResult } from '@/lib/editor.action';
-import { API_BASE } from '@/lib/api';
+import { executionService } from '@/services/execution.service';
+import type { RunResult, SubmissionResult } from '@/types/submission.types';
 
 // ── Time formatter ───────────────────────────────────────────────────────────
 
@@ -40,7 +40,7 @@ function ExamContent() {
     saveMcqAnswer,
     submitCode,
     finishTest,
-  } = useTestSession();
+  } = useTestSessionStore();
 
   const [showSubmitDialog, setShowSubmitDialog] = useState(false);
   const [codeValues, setCodeValues] = useState<Record<string, string>>({});
@@ -177,7 +177,7 @@ function ExamContent() {
   }
 
   return (
-    <ProctorOverlay isProctored={session.test.isProctored} testAttemptId={session.attemptId} maxViolations={session.test.maxViolations ?? 3} onAutoSubmit={finishTest}>
+    <ProctorOverlay isProctored={session.test.isProctored} testAttemptId={session.attemptId} maxViolations={session.test.maxViolations ?? 3} onAutoSubmit={() => finishTest().then(() => navigate(`/student/tests/${testId}/result`))}>
       <div className="h-screen bg-zinc-950 flex flex-col overflow-hidden">
       {/* ── Top Bar ─────────────────────────────────────────────────────────── */}
       <div className="h-14 border-b border-zinc-800 bg-zinc-950/95 backdrop-blur-sm flex items-center justify-between px-4 shrink-0">
@@ -318,7 +318,7 @@ function ExamContent() {
               Cancel
             </Button>
             <Button
-              onClick={() => { setShowSubmitDialog(false); finishTest(); }}
+              onClick={() => { setShowSubmitDialog(false); finishTest().then(() => navigate(`/student/tests/${testId}/result`)); }}
               className="bg-red-600 hover:bg-red-500 text-white cursor-pointer"
             >
               Submit Test
@@ -465,7 +465,7 @@ function CodingQuestionView({
     setSubmissionResult(null);
     setActivePanel('run');
 
-    cleanupRunRef.current = compileRun(
+    cleanupRunRef.current = executionService.compileRun(
       language,
       code,
       question.id,
@@ -834,12 +834,8 @@ function ExamSubmitResults({
   return <p className="text-zinc-500 text-sm">Click "Submit" to judge against all test cases (including hidden) and record your submission.</p>;
 }
 
-// ── Wrapped Page with Provider ───────────────────────────────────────────────
+// ── Page Export (Zustand store is global, no provider needed) ────────────────
 
 export default function TestExamPage() {
-  return (
-    <TestSessionProvider>
-      <ExamContent />
-    </TestSessionProvider>
-  );
+  return <ExamContent />;
 }

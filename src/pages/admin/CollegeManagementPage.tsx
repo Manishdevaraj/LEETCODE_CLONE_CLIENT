@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
-import { API_BASE, authFetch } from '@/lib/api';
+import { useState, useEffect } from 'react';
+import { collegeService } from '@/services/college.service';
 import Navbar from '@/components/Navbar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -89,34 +89,31 @@ export default function CollegeManagementPage() {
 
   // ─── Data fetching ──────────────────────────────────────────────────────
 
-  const fetchColleges = useCallback(async () => {
+  const fetchColleges = async () => {
     try {
-      const res = await authFetch(`${API_BASE}/colleges`);
-      if (!res.ok) throw new Error('Failed to fetch colleges');
-      const data = await res.json();
+      const data = await collegeService.getAll();
       setColleges(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch colleges');
     }
-  }, []);
+  };
 
-  const fetchDepartments = useCallback(async (collegeId: string) => {
+  const fetchDepartments = async (collegeId: string) => {
     setDeptLoading(true);
     try {
-      const res = await authFetch(`${API_BASE}/colleges/${collegeId}/departments`);
-      if (!res.ok) throw new Error('Failed to fetch departments');
-      const data = await res.json();
+      const data = await collegeService.getDepartments(collegeId);
       setDepartments(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch departments');
     } finally {
       setDeptLoading(false);
     }
-  }, []);
+  };
 
   useEffect(() => {
     fetchColleges().finally(() => setLoading(false));
-  }, [fetchColleges]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const toggleExpand = (collegeId: string) => {
     if (expandedCollegeId === collegeId) {
@@ -134,19 +131,11 @@ export default function CollegeManagementPage() {
     if (!createName.trim() || !createCode.trim()) return;
     setCreateLoading(true);
     try {
-      const res = await authFetch(`${API_BASE}/colleges`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: createName.trim(),
-          code: createCode.trim(),
-          location: createLocation.trim() || null,
-        }),
+      await collegeService.create({
+        name: createName.trim(),
+        code: createCode.trim(),
+        location: createLocation.trim() || null,
       });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || 'Failed to create college');
-      }
       setCreateOpen(false);
       setCreateName('');
       setCreateCode('');
@@ -170,19 +159,11 @@ export default function CollegeManagementPage() {
     if (!editCollege || !editName.trim() || !editCode.trim()) return;
     setEditLoading(true);
     try {
-      const res = await authFetch(`${API_BASE}/colleges/${editCollege.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: editName.trim(),
-          code: editCode.trim(),
-          location: editLocation.trim() || null,
-        }),
+      await collegeService.update(editCollege.id, {
+        name: editName.trim(),
+        code: editCode.trim(),
+        location: editLocation.trim() || null,
       });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || 'Failed to update college');
-      }
       setEditCollege(null);
       await fetchColleges();
     } catch (err) {
@@ -196,13 +177,7 @@ export default function CollegeManagementPage() {
     if (!deleteCollege) return;
     setDeleteLoading(true);
     try {
-      const res = await authFetch(`${API_BASE}/colleges/${deleteCollege.id}`, {
-        method: 'DELETE',
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || 'Failed to delete college');
-      }
+      await collegeService.delete(deleteCollege.id);
       if (expandedCollegeId === deleteCollege.id) {
         setExpandedCollegeId(null);
         setDepartments([]);
@@ -229,18 +204,10 @@ export default function CollegeManagementPage() {
     if (!createDeptCollegeId || !createDeptName.trim() || !createDeptCode.trim()) return;
     setCreateDeptLoading(true);
     try {
-      const res = await authFetch(`${API_BASE}/colleges/${createDeptCollegeId}/departments`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: createDeptName.trim(),
-          code: createDeptCode.trim(),
-        }),
+      await collegeService.createDepartment(createDeptCollegeId, {
+        name: createDeptName.trim(),
+        code: createDeptCode.trim(),
       });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || 'Failed to create department');
-      }
       setCreateDeptOpen(false);
       setCreateDeptName('');
       setCreateDeptCode('');
@@ -262,18 +229,10 @@ export default function CollegeManagementPage() {
     if (!editDept || !editDeptName.trim() || !editDeptCode.trim()) return;
     setEditDeptLoading(true);
     try {
-      const res = await authFetch(`${API_BASE}/departments/${editDept.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: editDeptName.trim(),
-          code: editDeptCode.trim(),
-        }),
+      await collegeService.updateDepartment(editDept.id, {
+        name: editDeptName.trim(),
+        code: editDeptCode.trim(),
       });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || 'Failed to update department');
-      }
       setEditDept(null);
       if (expandedCollegeId) {
         await Promise.all([fetchColleges(), fetchDepartments(expandedCollegeId)]);
@@ -289,13 +248,7 @@ export default function CollegeManagementPage() {
     if (!deleteDept) return;
     setDeleteDeptLoading(true);
     try {
-      const res = await authFetch(`${API_BASE}/departments/${deleteDept.id}`, {
-        method: 'DELETE',
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || 'Failed to delete department');
-      }
+      await collegeService.deleteDepartment(deleteDept.id);
       setDeleteDept(null);
       if (expandedCollegeId) {
         await Promise.all([fetchColleges(), fetchDepartments(expandedCollegeId)]);

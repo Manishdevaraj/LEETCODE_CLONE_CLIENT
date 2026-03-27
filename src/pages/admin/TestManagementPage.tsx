@@ -1,5 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
-import { API_BASE, authFetch } from '@/lib/api';
+import { testService } from '@/services/test.service';
+import { testCategoryService } from '@/services/test-category.service';
+import { mcqService } from '@/services/mcq.service';
+import { questionService } from '@/services/question.service';
+import { collegeService } from '@/services/college.service';
+import { batchService } from '@/services/batch.service';
 import Navbar from '@/components/Navbar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -218,30 +223,28 @@ export default function TestManagementPage() {
 
   const fetchTests = useCallback(async () => {
     try {
-      const res = await authFetch(`${API_BASE}/tests`);
-      if (!res.ok) throw new Error('Failed to fetch tests');
-      const data = await res.json();
-      setTests(Array.isArray(data) ? data : data.data ?? []);
+      const data = await testService.getAll();
+      setTests(Array.isArray(data) ? data as unknown as Test[] : []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch tests');
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const fetchCategories = useCallback(async () => {
     try {
-      const res = await authFetch(`${API_BASE}/mcq-categories`);
-      if (res.ok) setCategories(await res.json());
+      const data = await mcqService.getCategories();
+      setCategories(Array.isArray(data) ? data as unknown as McqCategory[] : []);
     } catch { /* ignore */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const fetchTestCategories = useCallback(async () => {
     try {
-      const res = await authFetch(`${API_BASE}/test-categories`);
-      if (res.ok) {
-        const data = await res.json();
-        setTestCategories(Array.isArray(data) ? data : data.data ?? []);
-      }
+      const data = await testCategoryService.getAll();
+      setTestCategories(Array.isArray(data) ? data as unknown as TestCategory[] : []);
     } catch { /* ignore */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -288,12 +291,9 @@ export default function TestManagementPage() {
 
     // Fetch test details (questions + batches)
     try {
-      const res = await authFetch(`${API_BASE}/tests/${test.id}`);
-      if (res.ok) {
-        const data = await res.json();
-        setTestQuestions(data.testQuestions ?? []);
-        setTestBatches(data.batchAssignments ?? []);
-      }
+      const data = await testService.getById(test.id);
+      setTestQuestions((data as any).testQuestions ?? []);
+      setTestBatches((data as any).batchAssignments ?? []);
     } catch { /* ignore */ }
   };
 
@@ -314,21 +314,9 @@ export default function TestManagementPage() {
       if (accessCode.trim()) payload.accessCode = accessCode.trim();
       payload.categoryId = selectedCategoryId && selectedCategoryId !== 'none' ? selectedCategoryId : undefined;
 
-      const url = editTest ? `${API_BASE}/tests/${editTest.id}` : `${API_BASE}/tests`;
-      const method = editTest ? 'PATCH' : 'POST';
-
-      const res = await authFetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || 'Failed to save test');
-      }
-
-      const saved = await res.json();
+      const saved = editTest
+        ? await testService.update(editTest.id, payload as any)
+        : await testService.create(payload as any);
       if (!editTest) {
         setEditTest(saved);
       }
@@ -345,11 +333,7 @@ export default function TestManagementPage() {
     if (!deleteTest) return;
     setDeleteLoading(true);
     try {
-      const res = await authFetch(`${API_BASE}/tests/${deleteTest.id}`, { method: 'DELETE' });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || 'Failed to delete test');
-      }
+      await testService.delete(deleteTest.id);
       setDeleteTest(null);
       await fetchTests();
     } catch (err) {
@@ -361,15 +345,7 @@ export default function TestManagementPage() {
 
   const handleStatusChange = async (test: Test, newStatus: string) => {
     try {
-      const res = await authFetch(`${API_BASE}/tests/${test.id}/status`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus }),
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || 'Failed to update status');
-      }
+      await testService.updateStatus(test.id, newStatus);
       await fetchTests();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update status');
@@ -397,23 +373,17 @@ export default function TestManagementPage() {
     setPickerLoading(true);
     try {
       if (type === 'MCQ') {
-        const params = new URLSearchParams({ page: '1', limit: '50' });
-        if (difficulty !== 'all') params.set('difficulty', difficulty);
-        if (topic.trim()) params.set('topic', topic.trim());
-        if (categoryId !== 'all') params.set('categoryId', categoryId);
-        const res = await authFetch(`${API_BASE}/mcq-questions?${params}`);
-        if (res.ok) {
-          const data = await res.json();
-          setPickerQuestions(Array.isArray(data) ? data : data.data ?? []);
-        }
+        const mcqParams: any = { page: 1, limit: 50 };
+        if (difficulty !== 'all') mcqParams.difficulty = difficulty;
+        if (topic.trim()) mcqParams.topic = topic.trim();
+        if (categoryId !== 'all') mcqParams.categoryId = categoryId;
+        const data = await mcqService.getQuestions(mcqParams);
+        setPickerQuestions(Array.isArray(data) ? data as unknown as McqQuestion[] : []);
       } else {
-        const params = new URLSearchParams({ page: '1', limit: '50' });
-        if (difficulty !== 'all') params.set('difficulty', difficulty);
-        const res = await authFetch(`${API_BASE}/questions?${params}`);
-        if (res.ok) {
-          const data = await res.json();
-          setPickerCodingQuestions(Array.isArray(data) ? data : data.data ?? []);
-        }
+        const codingParams: any = { page: 1, limit: 50 };
+        if (difficulty !== 'all') codingParams.difficulty = difficulty;
+        const data = await questionService.getAll(codingParams);
+        setPickerCodingQuestions(Array.isArray(data) ? data as unknown as CodingQuestion[] : []);
       }
     } catch { /* ignore */ } finally {
       setPickerLoading(false);
@@ -441,23 +411,12 @@ export default function TestManagementPage() {
         const payload = pickerType === 'MCQ'
           ? { mcqQuestionId: qId, marks: 1 }
           : { questionId: qId, marks: 5 };
-        const res = await authFetch(`${API_BASE}/tests/${editTest.id}/questions`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
-        if (!res.ok) {
-          const err = await res.json();
-          throw new Error(err.message || 'Failed to add question');
-        }
+        await testService.addQuestion(editTest.id, payload as any);
       }
       setPickerOpen(false);
       // Refresh test questions
-      const res = await authFetch(`${API_BASE}/tests/${editTest.id}`);
-      if (res.ok) {
-        const data = await res.json();
-        setTestQuestions(data.testQuestions ?? []);
-      }
+      const detail = await testService.getById(editTest.id);
+      setTestQuestions((detail as any).testQuestions ?? []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to add questions');
     } finally {
@@ -468,13 +427,7 @@ export default function TestManagementPage() {
   const handleRemoveQuestion = async (tqId: string) => {
     if (!editTest) return;
     try {
-      const res = await authFetch(`${API_BASE}/tests/${editTest.id}/questions/${tqId}`, {
-        method: 'DELETE',
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || 'Failed to remove question');
-      }
+      await testService.removeQuestion(editTest.id, tqId);
       setTestQuestions((prev) => prev.filter((q) => q.id !== tqId));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to remove question');
@@ -509,21 +462,10 @@ export default function TestManagementPage() {
     if (!editTest || autoRules.length === 0) return;
     setAutoGenerating(true);
     try {
-      const res = await authFetch(`${API_BASE}/tests/${editTest.id}/auto-generate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rules: autoRules }),
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || 'Failed to auto-generate');
-      }
+      await testService.autoGenerate(editTest.id, autoRules as any);
       // Refresh test questions
-      const tRes = await authFetch(`${API_BASE}/tests/${editTest.id}`);
-      if (tRes.ok) {
-        const data = await tRes.json();
-        setTestQuestions(data.testQuestions ?? []);
-      }
+      const detail = await testService.getById(editTest.id);
+      setTestQuestions((detail as any).testQuestions ?? []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to auto-generate questions');
     } finally {
@@ -534,15 +476,8 @@ export default function TestManagementPage() {
   const handleRegenerateQuestion = async (tqId: string) => {
     if (!editTest) return;
     try {
-      const res = await authFetch(`${API_BASE}/tests/${editTest.id}/regenerate-question/${tqId}`, {
-        method: 'POST',
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || 'Failed to regenerate');
-      }
-      const newTq = await res.json();
-      setTestQuestions((prev) => prev.map((q) => (q.id === tqId ? newTq : q)));
+      const newTq = await testService.regenerateQuestion(editTest.id, tqId);
+      setTestQuestions((prev) => prev.map((q) => (q.id === tqId ? newTq as unknown as TestQuestion : q)));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to regenerate question');
     }
@@ -552,31 +487,22 @@ export default function TestManagementPage() {
 
   const fetchColleges = async () => {
     try {
-      const res = await authFetch(`${API_BASE}/colleges`);
-      if (res.ok) {
-        const data = await res.json();
-        setColleges(Array.isArray(data) ? data : data.data ?? []);
-      }
+      const data = await collegeService.getAll();
+      setColleges(Array.isArray(data) ? data as unknown as College[] : []);
     } catch { /* ignore */ }
   };
 
   const fetchDepartments = async (collegeId: string) => {
     try {
-      const res = await authFetch(`${API_BASE}/colleges/${collegeId}/departments`);
-      if (res.ok) {
-        const data = await res.json();
-        setDepartments(Array.isArray(data) ? data : data.data ?? []);
-      }
+      const data = await collegeService.getDepartments(collegeId);
+      setDepartments(Array.isArray(data) ? data as unknown as Department[] : []);
     } catch { /* ignore */ }
   };
 
   const fetchBatches = async (deptId: string) => {
     try {
-      const res = await authFetch(`${API_BASE}/departments/${deptId}/batches`);
-      if (res.ok) {
-        const data = await res.json();
-        setBatches(Array.isArray(data) ? data : data.data ?? []);
-      }
+      const data = await batchService.getByDepartment(deptId);
+      setBatches(Array.isArray(data) ? data as unknown as Batch[] : []);
     } catch { /* ignore */ }
   };
 
@@ -607,22 +533,11 @@ export default function TestManagementPage() {
     if (!editTest || selectedBatchIds.size === 0) return;
     setAssignLoading(true);
     try {
-      const res = await authFetch(`${API_BASE}/tests/${editTest.id}/assign`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ batchIds: Array.from(selectedBatchIds) }),
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || 'Failed to assign batches');
-      }
+      await testService.assignBatches(editTest.id, { batchIds: Array.from(selectedBatchIds) } as any);
       setSelectedBatchIds(new Set());
       // Refresh
-      const tRes = await authFetch(`${API_BASE}/tests/${editTest.id}`);
-      if (tRes.ok) {
-        const data = await tRes.json();
-        setTestBatches(data.batchAssignments ?? []);
-      }
+      const detail = await testService.getById(editTest.id);
+      setTestBatches((detail as any).batchAssignments ?? []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to assign batches');
     } finally {
@@ -633,13 +548,7 @@ export default function TestManagementPage() {
   const handleUnassignBatch = async (batchId: string) => {
     if (!editTest) return;
     try {
-      const res = await authFetch(`${API_BASE}/tests/${editTest.id}/batches/${batchId}`, {
-        method: 'DELETE',
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || 'Failed to unassign batch');
-      }
+      await testService.unassignBatch(editTest.id, batchId);
       setTestBatches((prev) => prev.filter((b) => b.batchId !== batchId));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to unassign batch');
@@ -674,20 +583,10 @@ export default function TestManagementPage() {
       if (catDescription.trim()) payload.description = catDescription.trim();
       if (catColor) payload.color = catColor;
 
-      const url = editCategory
-        ? `${API_BASE}/test-categories/${editCategory.id}`
-        : `${API_BASE}/test-categories`;
-      const method = editCategory ? 'PATCH' : 'POST';
-
-      const res = await authFetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || 'Failed to save category');
+      if (editCategory) {
+        await testCategoryService.update(editCategory.id, payload as any);
+      } else {
+        await testCategoryService.create(payload as any);
       }
 
       await fetchTestCategories();
@@ -705,11 +604,7 @@ export default function TestManagementPage() {
   const handleDeleteCategory = async (catId: string) => {
     setCatDeleting(catId);
     try {
-      const res = await authFetch(`${API_BASE}/test-categories/${catId}`, { method: 'DELETE' });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || 'Failed to delete category');
-      }
+      await testCategoryService.delete(catId);
       await fetchTestCategories();
       await fetchTests();
     } catch (err) {

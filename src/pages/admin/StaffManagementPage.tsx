@@ -1,6 +1,8 @@
-// @ts-nocheck
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { API_BASE, authFetch } from '@/lib/api';
+import { userService } from '@/services/user.service';
+import { roleService } from '@/services/role.service';
+import { collegeService } from '@/services/college.service';
+import { bulkUploadService } from '@/services/bulk-upload.service';
 import Navbar from '@/components/Navbar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -82,7 +84,7 @@ interface UploadResult {
   total: number;
   created: number;
   skipped: number;
-  errors: number;
+  errors: { row: number; message: string }[];
   details: UploadResultRow[];
 }
 
@@ -182,12 +184,12 @@ export default function StaffManagementPage() {
   useEffect(() => {
     const fetchMeta = async () => {
       try {
-        const [rolesRes, collegesRes] = await Promise.all([
-          authFetch(`${API_BASE}/roles`),
-          authFetch(`${API_BASE}/colleges`),
+        const [rolesData, collegesData] = await Promise.all([
+          roleService.getAll(),
+          collegeService.getAll(),
         ]);
-        if (rolesRes.ok) setRoles(await rolesRes.json());
-        if (collegesRes.ok) setColleges(await collegesRes.json());
+        setRoles(rolesData as unknown as Role[]);
+        setColleges(collegesData as unknown as College[]);
       } catch {
         // Non-critical; filters will just be empty
       }
@@ -197,34 +199,31 @@ export default function StaffManagementPage() {
 
   // ─── Fetch staff users when filters/page change ────────────────────────
 
-  const fetchUsers = useCallback(async () => {
+  const fetchUsers = async () => {
     setLoading(true);
     setError(null);
     try {
-      const params = new URLSearchParams({
-        page: String(page),
-        limit: String(limit),
+      const data = await userService.getAll({
+        page,
+        limit,
+        search: debouncedSearch || undefined,
+        roleId: roleFilter || undefined,
+        collegeId: collegeFilter || undefined,
         userType: 'staff',
       });
-      if (debouncedSearch) params.set('search', debouncedSearch);
-      if (roleFilter) params.set('roleId', roleFilter);
-      if (collegeFilter) params.set('collegeId', collegeFilter);
-
-      const res = await authFetch(`${API_BASE}/admin/users?${params}`);
-      if (!res.ok) throw new Error('Failed to fetch staff users');
-      const data: UsersResponse = await res.json();
-      setUsers(data.data);
-      setTotal(data.total);
+      setUsers((data.data ?? []) as unknown as User[]);
+      setTotal(data.total ?? 0);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch staff users');
     } finally {
       setLoading(false);
     }
-  }, [page, debouncedSearch, roleFilter, collegeFilter]);
+  };
 
   useEffect(() => {
     fetchUsers();
-  }, [fetchUsers]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, debouncedSearch, roleFilter, collegeFilter]);
 
   // ─── Clear filters ─────────────────────────────────────────────────────
 
@@ -253,23 +252,15 @@ export default function StaffManagementPage() {
     if (!createForm.name || !createForm.email || !createForm.password || !createForm.roleId) return;
     setCreating(true);
     try {
-      const body: Record<string, string> = {
+      const payload: Record<string, string> = {
         name: createForm.name,
         email: createForm.email,
         password: createForm.password,
         roleId: createForm.roleId,
       };
-      if (createForm.collegeId) body.collegeId = createForm.collegeId;
+      if (createForm.collegeId) payload.collegeId = createForm.collegeId;
 
-      const res = await authFetch(`${API_BASE}/admin/users`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || 'Failed to create staff user');
-      }
+      await userService.create(payload as Parameters<typeof userService.create>[0]);
       setCreateOpen(false);
       await fetchUsers();
     } catch (err) {
@@ -284,9 +275,7 @@ export default function StaffManagementPage() {
   const handleBulkDownloadTemplate = async () => {
     setBulkDownloading(true);
     try {
-      const res = await authFetch(`${API_BASE}/bulk-upload/staff-template`);
-      if (!res.ok) throw new Error('Failed to download template');
-      const blob = await res.blob();
+      const blob = await bulkUploadService.downloadStaffTemplate();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -336,25 +325,10 @@ export default function StaffManagementPage() {
     setBulkProgress(10);
     setError(null);
     try {
-      const formData = new FormData();
-      formData.append('file', bulkFile);
-
       setBulkProgress(30);
-
-      const res = await authFetch(`${API_BASE}/bulk-upload/staff`, {
-        method: 'POST',
-        body: formData,
-      });
-
+      const data = await bulkUploadService.uploadStaff(bulkFile);
       setBulkProgress(80);
-
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || 'Upload failed');
-      }
-
-      const data: UploadResult = await res.json();
-      setBulkResult(data);
+      setBulkResult(data as unknown as UploadResult);
       setBulkProgress(100);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Upload failed');
@@ -388,15 +362,7 @@ export default function StaffManagementPage() {
     if (!roleDialogUser || !selectedRoleId) return;
     setRoleChanging(true);
     try {
-      const res = await authFetch(`${API_BASE}/admin/users/${roleDialogUser.id}/role`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ roleId: selectedRoleId }),
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || 'Failed to change role');
-      }
+      await userService.changeRole(roleDialogUser.id, { roleId: selectedRoleId });
       setRoleDialogUser(null);
       await fetchUsers();
     } catch (err) {
@@ -412,13 +378,7 @@ export default function StaffManagementPage() {
     if (!deleteUser) return;
     setDeleting(true);
     try {
-      const res = await authFetch(`${API_BASE}/admin/users/${deleteUser.id}`, {
-        method: 'DELETE',
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || 'Failed to delete user');
-      }
+      await userService.delete(deleteUser.id);
       setDeleteUser(null);
       await fetchUsers();
     } catch (err) {
@@ -974,7 +934,7 @@ export default function StaffManagementPage() {
                   </div>
                   <div className="rounded-lg bg-zinc-900 border border-zinc-800 p-3 text-center">
                     <p className="text-xs text-red-500 uppercase tracking-wider">Errors</p>
-                    <p className="text-xl font-bold text-red-400 mt-1">{bulkResult.errors}</p>
+                    <p className="text-xl font-bold text-red-400 mt-1">{bulkResult.errors.length}</p>
                   </div>
                 </div>
 

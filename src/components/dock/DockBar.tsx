@@ -1,12 +1,12 @@
 import { Link } from 'react-router-dom';
 import { useMotionValue } from 'framer-motion';
-import { useAuth } from '@/contexts/AuthContext';
+import { useAuthStore } from '@/stores/authStore';
 import { NAV_ITEMS } from './dock-nav-items';
 import DockItem from './DockItem';
 import DockUserMenu from './DockUserMenu';
 
 export default function DockBar() {
-  const { user } = useAuth();
+  const { user } = useAuthStore();
   const mouseX = useMotionValue(Infinity);
 
   const visibleItems = NAV_ITEMS.filter(
